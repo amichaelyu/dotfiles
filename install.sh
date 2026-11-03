@@ -24,7 +24,9 @@ case "$(uname -m)" in
   *) die "unsupported CPU: $(uname -m)" ;;
 esac
 
-if [ "$VERSION" = latest ]; then
+if [ -n "${DOTFILES_DOWNLOAD_BASE:-}" ]; then   # for testing against a local server
+  url="$DOTFILES_DOWNLOAD_BASE/dotfiles_${os}_${arch}.tar.gz"
+elif [ "$VERSION" = latest ]; then
   url="https://github.com/$REPO/releases/latest/download/dotfiles_${os}_${arch}.tar.gz"
 else
   url="https://github.com/$REPO/releases/download/$VERSION/dotfiles_${os}_${arch}.tar.gz"

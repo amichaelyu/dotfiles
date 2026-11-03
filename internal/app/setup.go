@@ -19,6 +19,10 @@ var Template fs.FS
 var titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")).MarginBottom(1)
 
 func confirm(q string) bool {
+	if os.Getenv("DOTFILES_YES") == "1" { // non-interactive runs (tests, scripts)
+		Say("%s yes (DOTFILES_YES)", q)
+		return true
+	}
 	ok := false
 	if err := huh.NewConfirm().Title(q).Value(&ok).Run(); err != nil {
 		return false
