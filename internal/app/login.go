@@ -7,18 +7,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
 // `dotfiles login`: get every account on this machine signed in.
 //
-//   auto     signed in from a Bitwarden secret or by the tool's own CLI (Tailscale, gh, Codex)
-//   browser  the app opens a sign-in page; Zen is already signed in (zen-push), and the page's
-//            "Continue" / "Open <App>" button is clicked automatically (falls back to you)
+//   auto     signed in from a Bitwarden secret or by the tool's own CLI (Tailscale, gh, Codex);
+//            CLI logins open their sign-in page in your browser and wait for you to approve it
+//   browser  assisted: the app (or its sign-in URL) is opened for you, you finish in the browser,
+//            and the app's own check notices when you're signed in
 //   qr       scan a QR code with your phone (Discord, Steam)
 //   manual   needs you (Office + Duo, Beeper recovery key, Apple ID, ...)
 
@@ -32,12 +31,6 @@ const (
 
 func (s signedIn) String() string { return [...]string{"?", "✓", "✗"}[s] }
 
-type recipe struct {
-	URL     *regexp.Regexp // sign-in page(s) to act on
-	Click   []string       // button labels, tried in order (exact text, case-insensitive)
-	Require string         // only click if the page mentions this (guards OAuth consent pages)
-}
-
 type loginApp struct {
 	ID, Name string
 	App      string // /Applications bundle that must exist ("" = CLI tool, see Bin)
@@ -47,8 +40,6 @@ type loginApp struct {
 	Check    func(d *Data) signedIn
 	Start    func(d *Data) error // kick off sign-in
 	Hint     string
-	Schemes  []string // URL schemes the sign-in page hands back to the app
-	Recipes  []recipe
 }
 
 func appPath(name string) string { return filepath.Join("/Applications", name+".app") }
@@ -103,9 +94,8 @@ var loginApps = []loginApp{
 			if key := secretFile("tailscale-authkey"); key != "" {
 				return Cmd{Args: []string{ts, "up", "--auth-key=" + key}}.Stream()
 			}
-			return Cmd{Args: []string{ts, "up"}}.Stream() // prints a login URL; the browser step clicks Connect
-		},
-		Schemes: nil, Recipes: []recipe{{URL: regexp.MustCompile(`login\.tailscale\.com/a/`), Click: []string{"Connect"}}}},
+			return Cmd{Args: []string{ts, "up"}}.Stream() // prints a login URL; open it and click Connect
+		}},
 	{ID: "gh", Name: "GitHub CLI", Bin: "gh", Kind: "auto",
 		Check: func(*Data) signedIn { return boolCheck(OK("gh", "auth", "status")) },
 		Start: func(*Data) error {
@@ -124,16 +114,14 @@ var loginApps = []loginApp{
 			out, _ := exec.Command("codex", "login", "status").CombinedOutput()
 			return boolCheck(strings.Contains(string(out), "Logged in"))
 		},
-		Start:   func(*Data) error { return Cmd{Args: []string{"codex", "login"}}.Stream() },
-		Recipes: []recipe{{URL: regexp.MustCompile(`auth\.openai\.com/`), Click: []string{"Continue", "Allow"}, Require: "Codex"}}},
+		Start: func(*Data) error { return Cmd{Args: []string{"codex", "login"}}.Stream() }},
 	{ID: "gcloud", Name: "Google Cloud CLI", Bin: "gcloud", Kind: "auto",
 		Check: func(*Data) signedIn {
 			return boolCheck(Out("gcloud", "auth", "list", "--filter=status:ACTIVE", "--format=value(account)") != "")
 		},
-		Start:   func(*Data) error { return Cmd{Args: []string{"gcloud", "auth", "login"}}.Stream() },
-		Recipes: []recipe{{URL: regexp.MustCompile(`accounts\.google\.com/.*(oauth|signin/oauth)`), Click: []string{"Continue", "Allow"}, Require: "Google Cloud SDK"}}},
+		Start: func(*Data) error { return Cmd{Args: []string{"gcloud", "auth", "login"}}.Stream() }},
 
-	// ------------------------------------------------------------------ browser (auto-clicked)
+	// ------------------------------------------------------------------ browser (assisted)
 	{ID: "slack", Name: "Slack", App: "Slack", Kind: "browser",
 		Check: func(*Data) signedIn {
 			var st struct {
@@ -145,23 +133,16 @@ var loginApps = []loginApp{
 			}
 			return boolCheck(len(st.Workspaces) > 0)
 		},
-		Start: openApp("Slack"), Hint: "in Slack, click Sign In (it opens Zen)", Schemes: []string{"slack"},
-		Recipes: []recipe{{URL: regexp.MustCompile(`slack\.com/(ssb|signin|workspace-signin|get-started|sign_in)`), Click: []string{"Open Slack", "Open in Slack", "Launch Slack", "Continue", "Sign in to Slack"}}}},
+		Start: openApp("Slack"), Hint: "in Slack, click Sign In and finish in your browser"},
 	{ID: "figma", Name: "Figma", App: "Figma", Kind: "browser",
-		Start: openApp("Figma"), Hint: "in Figma, click Log in with browser", Schemes: []string{"figma"},
-		Recipes: []recipe{{URL: regexp.MustCompile(`figma\.com/(app_auth|login|desktop|oauth)`), Click: []string{"Open Figma", "Open in Figma", "Open Figma app", "Continue", "Log in to Figma app"}}}},
+		Start: openApp("Figma"), Hint: "in Figma, click Log in with browser and finish there"},
 	{ID: "zed", Name: "Zed", App: "Zed", Kind: "browser",
 		Check: func(*Data) signedIn {
 			return boolCheck(OK("security", "find-internet-password", "-s", "https://zed.dev"))
 		},
-		Start: openApp("Zed"), Hint: "in Zed, click Sign In (top right)", Schemes: []string{"zed"},
-		Recipes: []recipe{
-			{URL: regexp.MustCompile(`zed\.dev/`), Click: []string{"Connect", "Sign in", "Continue"}},
-			{URL: regexp.MustCompile(`github\.com/login/oauth/authorize`), Click: []string{"Authorize zed-industries", "Authorize"}, Require: "Zed"},
-		}},
+		Start: openApp("Zed"), Hint: "in Zed, click Sign In (top right) and finish in your browser"},
 	{ID: "raycast", Name: "Raycast", App: "Raycast", Kind: "browser",
-		Start: openApp("Raycast"), Hint: "in Raycast Settings → Account, click Log In", Schemes: []string{"raycast", "com.raycast"},
-		Recipes: []recipe{{URL: regexp.MustCompile(`raycast\.com/`), Click: []string{"Open Raycast", "Continue", "Authorize"}}}},
+		Start: openApp("Raycast"), Hint: "in Raycast Settings → Account, click Log In and finish in your browser"},
 	{ID: "zoom", Name: "Zoom", App: "zoom.us", Kind: "browser",
 		Check: func(*Data) signedIn {
 			m, _ := filepath.Glob(ExpandHome("~/Library/Application Support/zoom.us/data/*@xmpp.zoom.us"))
@@ -169,12 +150,11 @@ var loginApps = []loginApp{
 		},
 		Start: func(d *Data) error {
 			if dom := identity(d, "zoom_sso_domain"); dom != "" { // SSO straight from the browser
-				return Run("open", "-a", "Zen", fmt.Sprintf("https://%s.zoom.us/saml/login?from=desktop", dom))
+				return Run("open", fmt.Sprintf("https://%s.zoom.us/saml/login?from=desktop", dom))
 			}
 			return Run("open", "-a", "zoom.us")
 		},
-		Hint: "approve Duo if asked", Schemes: []string{"zoommtg", "zoomus"},
-		Recipes: []recipe{{URL: regexp.MustCompile(`zoom\.us/`), Click: []string{"Launch Zoom", "Open Zoom", "Open zoom.us", "Open link"}}}},
+		Hint: "finish SSO in your browser (approve Duo if asked), then click Open zoom.us"},
 
 	// ------------------------------------------------------------------ phone QR
 	{ID: "discord", Name: "Discord", App: "Discord", Kind: "qr", Start: openApp("Discord"),
@@ -210,20 +190,6 @@ var loginApps = []loginApp{
 	{ID: "logi", Name: "Logi Options+", App: "logioptionsplus", Kind: "manual", Optional: true, Start: openApp("logioptionsplus"), Hint: "sign in to restore your mouse/keyboard settings backup"},
 	{ID: "bambu", Name: "Bambu Studio", App: "BambuStudio", Kind: "manual", Optional: true, Start: openApp("BambuStudio"), Hint: "sign in for cloud printing"},
 	{ID: "ollama", Name: "Ollama", Bin: "ollama", Kind: "manual", Optional: true, Start: func(*Data) error { return Cmd{Args: []string{"ollama", "signin"}}.Stream() }, Hint: "for cloud models"},
-}
-
-// usesBrowser: browser-kind apps, and CLI logins that print a URL (unless a secret makes it unattended).
-func (a loginApp) usesBrowser() bool {
-	if a.Kind == "browser" {
-		return true
-	}
-	if a.Kind != "auto" || len(a.Recipes) == 0 || !IsMac {
-		return false
-	}
-	if a.ID == "tailscale" && (secretFile("tailscale-authkey") != "" || secretFile("tailscale-oauth") != "") {
-		return false
-	}
-	return true
 }
 
 // ---------------------------------------------------------------------------- state
@@ -336,7 +302,6 @@ func CmdLogin(args []string) error {
 		Say("everything is signed in")
 		return nil
 	}
-	in := bufio.NewReader(os.Stdin)
 	byKind := func(k string) []loginApp {
 		var out []loginApp
 		for _, a := range pending {
@@ -347,11 +312,9 @@ func CmdLogin(args []string) error {
 		return out
 	}
 
-	// 1. automatic
+	// 1. automatic: secrets, or the CLI's own login (which opens its sign-in page in your browser
+	//    and waits for you). These may prompt on the terminal, so they run before we read stdin.
 	for _, a := range byKind("auto") {
-		if a.usesBrowser() {
-			continue // handled with the browser group
-		}
 		if a.Start == nil {
 			Warn("%s: %s", a.Name, a.Hint)
 			continue
@@ -362,145 +325,79 @@ func CmdLogin(args []string) error {
 		}
 	}
 
-	// 2. browser flows (Zen under remote control clicks the buttons)
-	var browserApps []loginApp
-	for _, a := range pending {
-		if a.usesBrowser() {
-			browserApps = append(browserApps, a)
+	// 2. browser (assisted), 3. phone QR, 4. manual: open each, then wait for you or its check.
+	lines := stdinLines()
+	for _, k := range []string{"browser", "qr", "manual"} {
+		for _, a := range byKind(k) {
+			fmt.Printf("\n%s %s: %s\n", stepStyle.Render("→"), a.Name, a.Hint)
+			if a.Start != nil {
+				if err := a.Start(d); err != nil {
+					Warn("%s: %v", a.Name, firstLine(err.Error()))
+				}
+			}
+			awaitSignIn(d, a, &st, lines)
 		}
-	}
-	if len(browserApps) > 0 && IsMac {
-		if err := runBrowserLogins(d, &st, browserApps, in); err != nil {
-			Warn("browser sign-ins: %v", err)
-		}
-	}
-
-	// 3. phone QR + 4. manual: open each, wait for you
-	for _, a := range append(byKind("qr"), byKind("manual")...) {
-		fmt.Printf("\n%s %s: %s\n", stepStyle.Render("→"), a.Name, a.Hint)
-		if a.Start != nil {
-			_ = a.Start(d)
-		}
-		fmt.Print(dim("  press Enter when signed in, s to skip on this machine, n for not now: "))
-		ans, _ := in.ReadString('\n')
-		switch strings.TrimSpace(strings.ToLower(ans)) {
-		case "s":
-			st.Skipped[a.ID] = true
-		case "n":
-		default:
-			st.Done[a.ID] = time.Now().Format("2006-01-02")
-		}
-		_ = writeJSON(loginStatePath, st)
 	}
 	fmt.Println()
 	printLoginStatus(d, st)
 	return nil
 }
 
-func runBrowserLogins(d *Data, st *loginState, apps []loginApp, in *bufio.Reader) error {
-	var schemes []string
-	for _, a := range apps {
-		schemes = append(schemes, a.Schemes...)
-	}
-	sess, b, err := startZenSession(schemes)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		b.close()
-		sess.Restore()
+// stdinLines reads answers in the background so a step can wait on both you and the app's check.
+func stdinLines() <-chan string {
+	ch := make(chan string)
+	go func() {
+		r := bufio.NewReader(os.Stdin)
+		for {
+			s, err := r.ReadString('\n')
+			if err != nil {
+				close(ch)
+				return
+			}
+			ch <- strings.TrimSpace(strings.ToLower(s))
+		}
 	}()
-	Say("Zen is under remote control; sign-in pages are clicked through automatically")
+	return ch
+}
 
-	for _, a := range apps {
-		fmt.Printf("\n%s %s", stepStyle.Render("→"), a.Name)
-		if a.Hint != "" {
-			fmt.Printf(": %s", a.Hint)
-		}
-		fmt.Println()
-		stop := make(chan struct{})
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() { defer wg.Done(); autoClick(b, a.Recipes, stop) }()
-		if a.Start != nil {
-			// CLI logins (tailscale up, codex login, gcloud auth login) block until the browser side
-			// finishes; app launches return immediately.
-			if err := a.Start(d); err != nil {
-				Warn("%s: %v", a.Name, firstLine(err.Error()))
+// awaitSignIn waits until you answer or, for apps with a check, until the check sees you signed in.
+func awaitSignIn(d *Data, a loginApp, st *loginState, lines <-chan string) {
+	select { // drop a stray Enter typed while the previous step finished on its own
+	case <-lines:
+	default:
+	}
+	var tick <-chan time.Time
+	if a.Check != nil {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		tick = t.C
+	}
+	fmt.Print(dim("  Enter = signed in, s = skip on this machine, n = not now: "))
+	for {
+		select {
+		case ans, ok := <-lines:
+			if !ok { // no terminal; leave it for next time
+				fmt.Println()
+				return
 			}
-		}
-		result := unknown
-		if a.Check != nil {
-			result = waitSignedIn(d, a, 3*time.Minute)
-		}
-		if result != yes {
-			if a.Check != nil {
-				fmt.Print(dim("  couldn't confirm automatically. "))
-			}
-			fmt.Print(dim("Enter = signed in, s = skip on this machine, n = not now: "))
-			ans, _ := in.ReadString('\n')
-			switch strings.TrimSpace(strings.ToLower(ans)) {
+			switch ans {
 			case "s":
 				st.Skipped[a.ID] = true
 			case "n":
+				return
 			default:
 				st.Done[a.ID] = time.Now().Format("2006-01-02")
 			}
 			_ = writeJSON(loginStatePath, *st)
-		} else {
-			Say("%s signed in", a.Name)
-		}
-		close(stop)
-		wg.Wait()
-	}
-	return nil
-}
-
-// autoClick watches Zen's tabs and clicks the matching button on recognized sign-in pages.
-func autoClick(b *bidi, recipes []recipe, stop chan struct{}) {
-	clicked := map[string]bool{}
-	tick := time.NewTicker(700 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-stop:
 			return
-		case <-tick.C:
-		}
-		tabs, err := b.tabs()
-		if err != nil {
-			return
-		}
-		for _, t := range tabs {
-			for _, r := range recipes {
-				key := t.Context + "|" + t.URL
-				if clicked[key] || !r.URL.MatchString(t.URL) {
-					continue
-				}
-				if label, err := b.clickByText(t.Context, r.Click, r.Require); err == nil && label != "" {
-					clicked[key] = true
-					Say("clicked %q on %s", label, hostOf(t.URL))
-				}
+		case <-tick:
+			if a.Check(d) == yes {
+				fmt.Println()
+				Say("%s signed in", a.Name)
+				return
 			}
 		}
 	}
-}
-
-// waitSignedIn polls the app's own signed-in check until it passes or times out.
-func waitSignedIn(d *Data, a loginApp, timeout time.Duration) signedIn {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if a.Check(d) == yes {
-			return yes
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return no
-}
-
-func hostOf(u string) string {
-	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
-	return strings.SplitN(u, "/", 2)[0]
 }
 
 func printLoginStatus(d *Data, st loginState) {
