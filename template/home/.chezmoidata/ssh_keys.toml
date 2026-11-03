@@ -1,0 +1,3 @@
+# One SSH key per device (public halves only). Generates ~/.ssh/authorized_keys (managed block)
+# and ~/.ssh/allowed_signers on every machine, and is registered with GitHub for auth + signing.
+# New devices append themselves on first apply; revoke with `dotfiles keys revoke <name>`.

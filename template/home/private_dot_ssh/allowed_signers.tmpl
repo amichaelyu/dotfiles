@@ -1,0 +1,4 @@
+# Generated from ssh_keys.toml: lets git and jj verify commits signed by any of your devices.
+{{- range (dig "ssh_keys" list .) }}
+{{ $.identity.email }} namespaces="git" {{ .key }} {{ .name }}
+{{- end }}

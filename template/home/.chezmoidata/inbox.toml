@@ -1,0 +1,8 @@
+# Installed on some machine but not yet sorted into a group in packages.toml.
+# `dotfiles sync` appends here; `full` machines install it. Move entries into a group when you can.
+
+[packages.groups.inbox]
+description = "Unsorted (auto-captured)"
+brew = []
+cask = []
+mise = []

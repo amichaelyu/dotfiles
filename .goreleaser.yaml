@@ -1,0 +1,23 @@
+version: 2
+project_name: dotfiles
+
+builds:
+  - id: dotfiles
+    main: ./cmd/dotfiles
+    binary: dotfiles
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [arm64, amd64]
+    ldflags:
+      - -s -w -X github.com/amichaelyu/dotfiles/internal/app.Version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    # Stable names so install.sh can use releases/latest/download/<name>
+    name_template: "dotfiles_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc

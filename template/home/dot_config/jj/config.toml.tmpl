@@ -1,0 +1,16 @@
+#:schema https://docs.jj-vcs.dev/latest/config-schema.json
+
+[user]
+name = {{ .identity.name | quote }}
+email = {{ .identity.email | quote }}
+
+[ui]
+default-command = "status"
+
+[signing]
+behavior = "own"
+backend = "ssh"
+key = "~/.ssh/id_ed25519.pub"
+
+[signing.backends.ssh]
+allowed-signers = "~/.ssh/allowed_signers"

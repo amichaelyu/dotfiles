@@ -1,0 +1,6 @@
+# Who you are. `dotfiles setup` fills this in for new repos.
+[identity]
+name = "Your Name"
+email = "you@example.com"
+github = ""
+bitwarden_item = "dotfiles"

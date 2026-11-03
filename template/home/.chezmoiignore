@@ -1,0 +1,29 @@
+{{- $g := includeTemplate "groups" . | fromJson -}}
+README.md
+**/.DS_Store
+
+{{ if ne .chezmoi.os "darwin" }}
+Library
+.config/zsh/os/darwin.zsh
+{{ else }}
+.bashrc
+.config/zsh/os/linux.zsh
+.config/systemd
+{{ end }}
+
+{{ if not (has "desktop" $g) }}
+Library/Fonts
+Library/Application Support
+{{ end }}
+
+{{ if not (dig "autosync" false .) }}
+Library/LaunchAgents/dotfiles.sync.plist
+.config/systemd/user/dotfiles-sync.service
+.config/systemd/user/dotfiles-sync.timer
+{{ end }}
+
+{{- /* Secret files render from ~/.config/dotfiles/secrets (`dotfiles secrets pull`); skip until it exists.
+       List each secret file's target here, e.g. .config/someapp/token */}}
+{{ if not (stat (joinPath .chezmoi.homeDir ".config/dotfiles/secrets")) }}
+.config/zsh/secrets.zsh
+{{ end }}

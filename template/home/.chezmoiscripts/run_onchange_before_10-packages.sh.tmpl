@@ -1,0 +1,4 @@
+#!/bin/sh
+# Installs this machine's package groups. Re-runs when packages or choices change:
+# {{ .packages | toJson | sha256sum }} {{ includeTemplate "groups" . }} {{ dig "exclude" list . | toJson }}
+PATH="$HOME/.local/bin:$PATH" exec dotfiles hook packages

@@ -1,0 +1,10 @@
+{{- /* Enabled package groups for this machine as JSON: includeTemplate "groups" . | fromJson */ -}}
+{{- $all := keys .packages.groups | sortAlpha -}}
+{{- $profile := dig "profile" "terminal" . -}}
+{{- $enabled := list -}}
+{{- if eq $profile "full" -}}{{- $enabled = $all -}}
+{{- else if eq $profile "custom" -}}{{- $enabled = concat (list "cli") (dig "groups" list .) | uniq -}}
+{{- else -}}{{- $enabled = list "cli" "dev" -}}
+{{- end -}}
+{{- $out := list -}}{{- range $enabled }}{{ if has . $all }}{{ $out = append $out . }}{{ end }}{{ end -}}
+{{- $out | toJson -}}

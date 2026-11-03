@@ -1,0 +1,5 @@
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export HOMEBREW_NO_ANALYTICS=1
+export HOMEBREW_NO_ENV_HINTS=1
+export HAYSTACK_TELEMETRY_ENABLED=False
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"

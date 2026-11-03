@@ -1,0 +1,20 @@
+# Curated macOS / app settings, applied with typed `defaults write` on desktop machines.
+# `dotfiles sync` refreshes these values; `dotfiles prefs` reviews newly changed settings.
+# Domains prefixed with currentHost: are written with -currentHost.
+
+[macos.prefs."NSGlobalDomain"]
+"AppleShowAllExtensions" = true
+"ApplePressAndHoldEnabled" = false
+"NSAutomaticSpellingCorrectionEnabled" = false
+
+[macos.prefs."com.apple.dock"]
+"autohide" = true
+"show-recents" = false
+
+[macos.prefs."com.apple.finder"]
+"ShowPathbar" = true
+"ShowStatusBar" = true
+
+[macos.symbolichotkeys]
+# System shortcuts turned off, e.g. 64 = Spotlight (⌘Space) if you use Raycast/Alfred instead
+disabled = []

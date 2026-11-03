@@ -1,0 +1,122 @@
+# ==============================================================================
+# 1. EARLY EXPORTS
+# ==============================================================================
+
+# Skip the security check for speed
+ZSH_DISABLE_COMPFIX="true"
+
+export LANG=en_US.UTF-8
+export EDITOR='vim'
+
+# OS-specific PATH and tools (Homebrew, pnpm, mamba, OrbStack on macOS; mise on Linux).
+# Loaded before oh-my-zsh so plugins see the right PATH and fpath.
+case "$OSTYPE" in
+  darwin*) source "$HOME/.config/zsh/os/darwin.zsh" ;;
+  linux*)  source "$HOME/.config/zsh/os/linux.zsh" ;;
+esac
+
+# Global bun installs (`bun add -g`) land here on every OS
+export PATH="$HOME/.bun/bin:$PATH"
+
+# ==============================================================================
+# 2. OH-MY-ZSH (Stripped down)
+# ==============================================================================
+export ZSH="$HOME/.oh-my-zsh"
+# Theme, aliases and custom plugins live in the dotfiles repo, not in the omz checkout.
+export ZSH_CUSTOM="$HOME/.config/zsh/custom"
+ZSH_THEME="betterEastwood"
+
+typeset -U fpath
+
+# Disable auto-updates for max speed. chezmoi refreshes ~/.oh-my-zsh weekly.
+zstyle ':omz:update' mode disabled
+
+# fzf-tab MUST come before fast-syntax-highlighting / zsh-autosuggestions,
+# since those wrap the same widgets it replaces.
+plugins=(git fzf-tab fast-syntax-highlighting zsh-autosuggestions jj gitRepo)
+
+# Load OMZ (uses cached `compinit -u -C` because ZSH_DISABLE_COMPFIX=true)
+# If new completions don't appear after installing a tool: rm ~/.zcompdump* && exec zsh
+source $ZSH/oh-my-zsh.sh
+
+# Autosuggest Speed Config
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+ZSH_AUTOSUGGEST_USE_ASYNC="true" # Run in background thread
+
+# ==============================================================================
+# 3. TOOLS
+# ==============================================================================
+
+# Bun Completions (Check existence first to avoid error lag)
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
+
+# Local Env (uv installer)
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"
+
+# Secrets rendered from the dotfiles secrets cache (CROC_SECRET, ...)
+[ -f "$HOME/.config/zsh/secrets.zsh" ] && source "$HOME/.config/zsh/secrets.zsh"
+
+# Zoxide (Fast enough to keep, but put at end)
+if command -v zoxide > /dev/null; then
+  eval "$(zoxide init zsh)"
+fi
+
+# ==============================================================================
+# 3.5 FZF (Ctrl-R history search + fzf-tab completion menu)
+# ==============================================================================
+if command -v fzf > /dev/null; then
+  # Global look & feel for every fzf popup
+  export FZF_DEFAULT_OPTS="
+    --height=45% --layout=reverse --border=rounded --info=inline
+    --bind=ctrl-/:toggle-preview,ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down
+  "
+  # Ctrl-R: fuzzy history. Exact-ish matching + long lines wrapped in the preview.
+  export FZF_CTRL_R_OPTS="
+    --preview 'echo {}' --preview-window=down:3:wrap
+    --bind='ctrl-y:execute-silent(echo -n {2..} | $CLIPCOPY)+abort'
+    --header='C-y: copy command'
+  "
+
+  # Use fd for Ctrl-T / Alt-C: fast and respects .gitignore
+  if command -v fd > /dev/null; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+    export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
+  fi
+
+  # Key bindings (Ctrl-R history, Ctrl-T files, Alt-C cd) + **<TAB> completion.
+  # This rebinds TAB to fzf-completion, which falls back to whatever TAB was
+  # bound to before -- i.e. fzf-tab. So: `vim **<TAB>` = fzf path picker,
+  # plain <TAB> = fzf-tab menu. Keep this AFTER oh-my-zsh so that chain holds.
+  eval "$(fzf --zsh)"
+fi
+
+# --- fzf-tab: replaces the default zsh completion menu with an fzf picker -----
+# fzf-tab needs zsh's own menu off, otherwise it never gets control.
+# oh-my-zsh sets `menu select` on the more-specific ':completion:*:*:*:*:*'
+# pattern, so that one has to be overridden too or it wins.
+zstyle ':completion:*' menu no
+zstyle ':completion:*:*:*:*:*' menu no
+# Show a preview of directories when completing cd/ls/etc. ($LS_PREVIEW is set per OS)
+zstyle ':fzf-tab:complete:cd:*' fzf-preview '$LS_PREVIEW $realpath'
+zstyle ':fzf-tab:complete:z:*' fzf-preview '$LS_PREVIEW $realpath'
+zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview '$LS_PREVIEW $realpath'
+# Don't re-sort git's already-meaningful ordering
+zstyle ':completion:*:git-checkout:*' sort false
+# Group headers (e.g. "external command" vs "alias"); Ctrl-H/Ctrl-L cycle groups
+zstyle ':completion:*:descriptions' format '[%d]'
+zstyle ':fzf-tab:*' switch-group 'ctrl-h' 'ctrl-l'
+zstyle ':fzf-tab:*' fzf-min-height 15
+# Press '/' to accept a directory and immediately keep completing deeper
+zstyle ':fzf-tab:*' continuous-trigger '/'
+
+# ==============================================================================
+# 4. FINAL CLEANUP
+# ==============================================================================
+
+# Colors
+export LSCOLORS="Gxfxcxdxbxegedabagcxcx"
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}" "ow=01;32" "tw=01;32"
+
+# Machine-local additions that shouldn't be in the repo
+[ -f "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"

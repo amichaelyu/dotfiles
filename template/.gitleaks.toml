@@ -1,0 +1,14 @@
+# Leak guard rules: gitleaks defaults plus a few extras. `dotfiles guard` also blocks exact
+# matches of every value in the local secrets cache (kept in memory, never written here).
+[extend]
+useDefault = true
+
+[[rules]]
+id = "raycast-token"
+description = "Raycast access token"
+regex = '''rca_[0-9a-f]{40,}'''
+
+[[rules]]
+id = "private-key-block"
+description = "Private key material"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY( BLOCK)?-----'''

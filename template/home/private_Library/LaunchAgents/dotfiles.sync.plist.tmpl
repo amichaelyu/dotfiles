@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dotfiles.sync</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string><string>{{ .chezmoi.homeDir }}/.local/bin/dotfiles sync</string></array>
+  <!-- daily at 03:00; launchd runs a missed job after wake -->
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/dotfiles-sync.log</string>
+  <key>StandardErrorPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/dotfiles-sync.log</string>
+</dict>
+</plist>

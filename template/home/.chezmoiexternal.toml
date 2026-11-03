@@ -1,0 +1,32 @@
+# Third-party code fetched by chezmoi rather than copied into the repo.
+
+[".oh-my-zsh"]
+type = "git-repo"
+url = "https://github.com/ohmyzsh/ohmyzsh.git"
+refreshPeriod = "168h"
+clone.args = ["--depth", "1"]
+pull.args = ["--ff-only"]
+
+[".config/zsh/custom/plugins/fzf-tab"]
+type = "git-repo"
+url = "https://github.com/Aloxaf/fzf-tab.git"
+refreshPeriod = "168h"
+clone.args = ["--depth", "1"]
+
+[".config/zsh/custom/plugins/fast-syntax-highlighting"]
+type = "git-repo"
+url = "https://github.com/zdharma-continuum/fast-syntax-highlighting.git"
+refreshPeriod = "168h"
+clone.args = ["--depth", "1"]
+
+[".config/zsh/custom/plugins/zsh-autosuggestions"]
+type = "git-repo"
+url = "https://github.com/zsh-users/zsh-autosuggestions.git"
+refreshPeriod = "168h"
+clone.args = ["--depth", "1"]
+
+
+[".vim/autoload/plug.vim"]
+type = "file"
+url = "https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim"
+refreshPeriod = "720h"

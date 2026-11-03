@@ -1,0 +1,10 @@
+#!/bin/sh
+# Keeps any keys added by hand or by others; only the block between the markers is managed.
+awk '/^# >>> dotfiles devices >>>/{skip=1} !skip{print} /^# <<< dotfiles devices <<</{skip=0}'
+cat <<'KEYS'
+# >>> dotfiles devices >>> (generated from ssh_keys.toml; edit there)
+{{- range (dig "ssh_keys" list .) }}
+{{ .key }} {{ .name }}
+{{- end }}
+# <<< dotfiles devices <<<
+KEYS

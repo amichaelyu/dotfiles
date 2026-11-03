@@ -1,0 +1,10 @@
+# macOS-only options are ignored on Linux
+IgnoreUnknown UseKeychain
+
+# Generated: one Host per tailnet peer (see config.d/tailnet). Add your own hosts in config.d/ too.
+Include ~/.ssh/config.d/*
+
+Host *
+  AddKeysToAgent yes
+  UseKeychain yes
+  IdentityFile ~/.ssh/id_ed25519

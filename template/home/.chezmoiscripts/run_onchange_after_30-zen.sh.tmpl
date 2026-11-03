@@ -1,0 +1,6 @@
+{{- if stat (joinPath .chezmoi.sourceDir ".zen") -}}
+#!/bin/sh
+# Copies .zen/ into the Zen browser profile. Re-runs when it changes:
+# {{ output "sh" "-c" (printf "cd %q && find .zen -type f -exec shasum {} + | sort" .chezmoi.sourceDir) | sha256sum }}
+PATH="$HOME/.local/bin:$PATH" exec dotfiles hook zen
+{{ end -}}

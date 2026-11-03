@@ -1,0 +1,42 @@
+# Package groups. Each machine picks a profile in `dotfiles setup` / `dotfiles config`:
+#   terminal = cli + dev   full = every group   custom = cli + the groups you choose
+# macOS installs brew/cask/mas entries; Linux installs `mise` entries.
+# Edit freely. `dotfiles sync` adds new installs to inbox.toml and uninstalls to [packages.removed].
+
+[packages.trusted_taps]
+taps = []
+
+[packages.groups.cli]
+description = "Shell, version control, core CLI tools"
+brew = ["bitwarden-cli", "chezmoi", "fd", "fzf", "gh", "gitleaks", "jj", "jq", "mas", "mise", "neovim", "ripgrep", "tmux", "uv", "zoxide"]
+cask = []
+mise = ["jj", "fzf", "ripgrep", "fd", "zoxide", "neovim", "uv", "gh", "jq", "chezmoi", "gitleaks", "bitwarden"]
+
+[packages.groups.dev]
+description = "Toolchains and language servers"
+brew = ["go", "node"]
+mise = ["go", "node"]
+
+[packages.groups.desktop]
+description = "Everyday Mac apps, fonts, macOS settings"
+cask = ["bitwarden", "font-jetbrains-mono", "raycast", "stats", "tailscale-app"]
+mas = []
+
+[packages.groups.dev-apps]
+description = "Editors and dev GUI apps"
+cask = ["orbstack", "zed"]
+
+[packages.groups.comms]
+description = "Chat and meetings"
+cask = ["discord", "slack", "zoom"]
+
+[packages.groups.media]
+description = "Audio, video, images"
+brew = ["ffmpeg"]
+cask = ["iina"]
+
+# Uninstalled on every machine the next time it applies (app data is kept).
+[packages.removed]
+brew = []
+cask = []
+mise = []

@@ -1,0 +1,6 @@
+[Unit]
+Description=dotfiles daily sync
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env zsh -lc "%h/.local/bin/dotfiles sync"

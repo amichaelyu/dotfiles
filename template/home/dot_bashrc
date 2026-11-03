@@ -1,0 +1,5 @@
+# Linux only (ignored on macOS). Where `chsh` isn't allowed, hop into zsh for interactive shells.
+case $- in *i*) ;; *) return ;; esac
+if [ -z "$ZSH_VERSION" ] && command -v zsh > /dev/null && [ -z "$NO_ZSH" ]; then
+  exec zsh -l
+fi
