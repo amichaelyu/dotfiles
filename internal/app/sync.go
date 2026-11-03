@@ -308,8 +308,11 @@ func CmdStatus() error {
 	if b, err := os.ReadFile(filepath.Join(StateDir, "secrets-dirty")); err == nil {
 		section("Secrets changed locally (run `dotfiles secrets push`)", indent(strings.TrimSpace(string(b))))
 	}
+	if n := loginPendingCount(d); n > 0 {
+		section("Accounts", fmt.Sprintf("  %d app(s) not signed in: run `dotfiles login`", n))
+	}
 	if IsMac {
-		section("Apps not from Homebrew or the App Store", indent(strings.Join(unmanagedApps(), ", ")))
+		section("Apps not managed (`dotfiles exclude NAME` to stop listing one)", indent(strings.Join(unmanagedApps(d.Exclude), "\n")))
 	}
 	return nil
 }

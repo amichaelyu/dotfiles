@@ -108,11 +108,19 @@ func ResolveGroups(profile string, chosen, all []string) []string {
 	return intersect(keys(set), all)
 }
 
-// Excluded reports whether a package was deselected on this machine.
-func (d *Data) Excluded(name string) bool {
-	for _, e := range d.Exclude {
-		if e == name || e == short(name) {
-			return true
+// Excluded reports whether name is on this machine's exclude list (not managed here at all).
+func (d *Data) Excluded(name string) bool { return matchesAny(d.Exclude, name) }
+
+// matchesAny matches a package or app name against exclude patterns. Patterns may use * wildcards and
+// match the full name, the part after the last "/" (tap/name, Folder/App.app), or the name without ".app".
+func matchesAny(patterns []string, name string) bool {
+	cands := []string{name, short(name), strings.TrimSuffix(name, ".app"), strings.TrimSuffix(short(name), ".app")}
+	for _, p := range patterns {
+		p = strings.TrimSuffix(p, ".app")
+		for _, c := range cands {
+			if ok, _ := filepath.Match(p, c); ok || p == c {
+				return true
+			}
 		}
 	}
 	return false

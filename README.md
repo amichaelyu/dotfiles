@@ -22,9 +22,10 @@ Change your mind later with `dotfiles config`.
 | | |
 |---|---|
 | **Packages** | Groups in `packages.toml` (cli, dev, desktop, …) install via Homebrew/App Store on macOS and mise on Linux. |
-| **New apps** | Daily sync notices installs and files them in `inbox.toml`; uninstalls propagate to every machine. Drag-installed apps are adopted as Homebrew casks when one matches. |
+| **New apps** | Daily sync notices installs and files them in `inbox.toml`. Uninstalling an app only affects that machine (it's excluded there); `dotfiles remove PKG --everywhere` drops it from every machine. Drag-installed apps are adopted as Homebrew casks when one matches. |
 | **Settings** | Curated `defaults` keys in `macos.toml` are applied and kept current. Every other setting you change is diffed daily and queued for review (`dotfiles prefs`). |
 | **SSH keys** | Each device gets its own key, registered with GitHub for login and commit signing. `authorized_keys` and `allowed_signers` are generated on every machine; `dotfiles keys revoke` removes a lost device everywhere. |
+| **Accounts** | `dotfiles login` signs in everything that isn't yet: CLI tools from Bitwarden secrets or their own login, browser-based apps (Slack, Figma, Zed, Raycast, Zoom) by driving your already-signed-in Zen and clicking "Continue" for you, QR codes for Discord/Steam, and a short checklist for the rest. |
 | **Secrets** | Kept as attachments on one Bitwarden note, cached locally (0600), rendered into config files by chezmoi. Never in git. |
 | **Sync** | Daily: capture → commit (jj) → fetch/rebase → leak guard (gitleaks + exact match on your secrets) → push → apply. |
 
@@ -35,9 +36,12 @@ dotfiles setup | config                  first run / change this machine's choic
 dotfiles status                          what's drifted or waiting for review
 dotfiles sync | capture                  full daily sync / just pull live changes into the repo
 dotfiles prefs [accept N | ignore N | watch]
+dotfiles login [--status | --add ID | --skip ID]
+dotfiles exclude [--rm] NAME            don't manage a package/app on this machine
 dotfiles keys [revoke NAME | push HOST]
 dotfiles secrets pull | push
 dotfiles add PATH                        start tracking a file
+dotfiles remove PKG [--everywhere]       uninstall here (or on every machine)
 dotfiles zen-push HOST                   copy your whole Zen browser profile to another machine
 ```
 

@@ -258,6 +258,7 @@ func chooseProfile(mc *MachineConfig) error {
 		return nil
 	}
 	excluded := set(mc.Exclude)
+	shown := map[string]bool{}
 	var newExclude []string
 	for _, g := range ResolveGroups(mc.Profile, mc.Groups, all) {
 		grp := d.Packages.Groups[g]
@@ -283,9 +284,15 @@ func chooseProfile(mc *MachineConfig) error {
 		}
 		kept := set(keep)
 		for _, n := range names {
+			shown[n] = true
 			if !kept[n] {
 				newExclude = append(newExclude, n)
 			}
+		}
+	}
+	for _, e := range mc.Exclude { // keep excludes added by hand (apps, wildcards, other groups)
+		if !shown[e] {
+			newExclude = append(newExclude, e)
 		}
 	}
 	mc.Exclude = newExclude
@@ -355,6 +362,11 @@ func configureAndApply(mc *MachineConfig) error {
 		return err
 	}
 	fmt.Println()
+	if confirm("Sign in to your apps now? (`dotfiles login`; you can run it later too)") {
+		if err := CmdLogin(nil); err != nil {
+			Warn("login: %v", err)
+		}
+	}
 	Say("done. Useful next: `dotfiles status`, `dotfiles config` to change choices, `dotfiles help`")
 	return nil
 }

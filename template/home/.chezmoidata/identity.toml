@@ -4,3 +4,4 @@ name = "Your Name"
 email = "you@example.com"
 github = ""
 bitwarden_item = "dotfiles"
+# zoom_sso_domain = "yourorg"   # optional: Zoom SSO sign-in via https://yourorg.zoom.us

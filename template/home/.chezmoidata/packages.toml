@@ -1,7 +1,8 @@
 # Package groups. Each machine picks a profile in `dotfiles setup` / `dotfiles config`:
 #   terminal = cli + dev   full = every group   custom = cli + the groups you choose
 # macOS installs brew/cask/mas entries; Linux installs `mise` entries.
-# Edit freely. `dotfiles sync` adds new installs to inbox.toml and uninstalls to [packages.removed].
+# Edit freely. `dotfiles sync` adds new installs to inbox.toml. Uninstalling an app only skips it on that
+# machine; `dotfiles remove PKG --everywhere` lists it under [packages.removed] for every machine.
 
 [packages.trusted_taps]
 taps = []
@@ -35,7 +36,7 @@ description = "Audio, video, images"
 brew = ["ffmpeg"]
 cask = ["iina"]
 
-# Uninstalled on every machine the next time it applies (app data is kept).
+# Uninstalled on every machine the next time it applies (app data is kept). Only `dotfiles remove --everywhere` adds here.
 [packages.removed]
 brew = []
 cask = []

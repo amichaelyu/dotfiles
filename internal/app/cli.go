@@ -19,9 +19,12 @@ Every day
   sync                capture → commit → fetch/rebase → leak guard → push → apply
   capture             only pull live changes (configs, settings, packages, Zen) into the repo
   add PATH...         start tracking a file or folder
+  exclude [--rm] NAME don't manage a package or app on this machine (no args: list)
+  remove PKG...       uninstall here and skip it on this machine (--everywhere: every machine)
   prefs               review settings changed since the last sync (accept N | ignore N | watch)
 
-Keys and secrets
+Accounts, keys and secrets
+  login               sign in to everything not signed in yet (--status | --add ID | --skip ID | --reset ID)
   keys                this machine's and your other devices' SSH keys (revoke NAME | push HOST | register-all)
   secrets pull|push   Bitwarden note <-> local secrets cache
   guard [REV]         scan outgoing commits for secrets
@@ -70,6 +73,12 @@ func dispatch(cmd string, args []string) error {
 		return nil
 	case "add":
 		return CmdAdd(args)
+	case "remove":
+		return CmdRemove(args)
+	case "exclude":
+		return CmdExclude(args)
+	case "login":
+		return CmdLogin(args)
 	case "prefs":
 		return CmdPrefs(args)
 	case "keys":

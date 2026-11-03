@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"howett.net/plist"
 )
 
 // ---------------------------------------------------------------------------- install (hook)
@@ -203,22 +205,22 @@ func capturePackages(d *Data) []string {
 	var notes []string
 	add := func(list *[]string, name string) { *list = append(*list, name); notes = append(notes, "+"+name) }
 	for name := range got.Brew {
-		if !known["brew"][name] {
+		if !known["brew"][name] && !d.Excluded(name) {
 			add(&inbox.Brew, name)
 		}
 	}
 	for name := range got.Cask {
-		if !known["cask"][name] {
+		if !known["cask"][name] && !d.Excluded(name) {
 			add(&inbox.Cask, name)
 		}
 	}
 	for name := range got.Mise {
-		if !known["mise"][name] {
+		if !known["mise"][name] && !d.Excluded(name) {
 			add(&inbox.Mise, name)
 		}
 	}
 	for id, name := range got.Mas {
-		if !knownMas[id] {
+		if !knownMas[id] && !d.Excluded(name) {
 			inbox.Mas = append(inbox.Mas, MasApp{Name: name, ID: id})
 			notes = append(notes, "+"+name)
 		}
@@ -229,28 +231,103 @@ func capturePackages(d *Data) []string {
 		}
 	}
 
-	// Uninstall detection: wanted here, installed at the last sync, gone now.
+	// Uninstall detection: wanted here, installed at the last sync, gone now. This only affects
+	// THIS machine: the package joins its local exclude list so it isn't reinstalled here.
+	// Removing a package from every machine is explicit: `dotfiles remove PKG --everywhere`.
 	statePath := filepath.Join(StateDir, "packages.json")
 	var prev pkgState
 	hadPrev := readJSON(statePath, &prev) == nil
 	if hadPrev {
 		was := map[string]map[string]bool{"brew": set(prev.Brew), "cask": set(prev.Cask), "mise": set(prev.Mise)}
+		var gone []string
 		for _, gname := range d.EnabledGroups() {
 			g := d.Packages.Groups[gname]
 			for kind, list := range map[string][]string{"brew": g.Brew, "cask": g.Cask, "mise": g.Mise} {
 				for _, name := range list {
 					if (was[kind][name] || was[kind][short(name)]) && !got.has(kind, name) && !d.Excluded(name) {
-						if err := moveToRemoved(d.Src(), kind, name); err == nil {
-							notes = append(notes, "-"+short(name))
-						}
+						gone = append(gone, name)
 					}
 				}
+			}
+		}
+		if len(gone) > 0 {
+			mc := ReadMachineConfig()
+			mc.Exclude = append(mc.Exclude, gone...)
+			if err := WriteMachineConfig(mc); err == nil {
+				Say("uninstalled here, so excluded on this machine only: %s (other machines keep it; `dotfiles remove PKG --everywhere` to drop it everywhere)", strings.Join(gone, ", "))
 			}
 		}
 	}
 	prev.Brew, prev.Cask, prev.Mise = sortedKeys(got.Brew), sortedKeys(got.Cask), sortedKeys(got.Mise)
 	_ = writeJSON(statePath, prev)
 	return notes
+}
+
+// CmdRemove uninstalls packages here and excludes them on this machine; with --everywhere it also
+// lists them under [packages.removed] so every machine uninstalls them on its next apply.
+func CmdRemove(args []string) error {
+	everywhere := false
+	var names []string
+	for _, a := range args {
+		if a == "--everywhere" {
+			everywhere = true
+		} else {
+			names = append(names, a)
+		}
+	}
+	if len(names) == 0 {
+		return fmt.Errorf("usage: dotfiles remove PKG... [--everywhere]")
+	}
+	d, err := LoadData()
+	if err != nil {
+		return err
+	}
+	got := snapshotInstalled()
+	mc := ReadMachineConfig()
+	for _, n := range names {
+		kind := "brew"
+		switch {
+		case got.has("cask", n) || inAnyGroup(d, "cask", n):
+			kind = "cask"
+		case !IsMac:
+			kind = "mise"
+		}
+		if got.has(kind, n) {
+			Say("uninstalling %s", n)
+			switch kind {
+			case "cask":
+				_ = Cmd{Args: []string{"brew", "uninstall", "--cask", n}}.Stream()
+			case "brew":
+				_ = Cmd{Args: []string{"brew", "uninstall", n}}.Stream()
+			case "mise":
+				_ = Run(MiseBin, "uninstall", "--all", n)
+			}
+		}
+		if everywhere {
+			if err := moveToRemoved(d.Src(), kind, n); err != nil {
+				return err
+			}
+			Say("%s listed under [packages.removed]; other machines uninstall it on their next sync", n)
+		} else if !contains(mc.Exclude, n) {
+			mc.Exclude = append(mc.Exclude, n)
+		}
+	}
+	if !everywhere {
+		Say("excluded on this machine only")
+	}
+	return WriteMachineConfig(mc)
+}
+
+func inAnyGroup(d *Data, kind, name string) bool {
+	for _, g := range groupsOf(d) {
+		list := map[string][]string{"brew": g.Brew, "cask": g.Cask, "mise": g.Mise}[kind]
+		for _, n := range list {
+			if n == name || short(n) == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func groupsOf(d *Data) []Group {
@@ -261,45 +338,130 @@ func groupsOf(d *Data) []Group {
 	return out
 }
 
-// unmanagedApps lists /Applications apps not from a brew cask or the App Store.
-func unmanagedApps() []string {
-	caskApps := map[string]bool{}
+// caskOwnedApps returns /Applications-relative paths (e.g. "Zed.app", "KiCad/KiCad.app") that installed
+// casks account for: their app artifacts, suite folders, and every app inside the .pkg receipts they
+// declare (Office, Zoom, Tailscale, ... install through a .pkg and never name the app).
+func caskOwnedApps() (apps, suites, bundleIDs map[string]bool) {
+	apps, suites, bundleIDs = map[string]bool{}, map[string]bool{}, map[string]bool{}
 	var info struct {
 		Casks []struct {
-			Artifacts []any `json:"artifacts"`
+			Artifacts []map[string]json.RawMessage `json:"artifacts"`
 		} `json:"casks"`
 	}
-	if json.Unmarshal([]byte(Out("brew", "info", "--cask", "--installed", "--json=v2")), &info) == nil {
-		for _, c := range info.Casks {
-			for _, a := range c.Artifacts {
-				if m, ok := a.(map[string]any); ok {
-					if apps, ok := m["app"].([]any); ok {
-						for _, x := range apps {
-							switch v := x.(type) {
-							case string:
-								caskApps[filepath.Base(v)] = true
-							case map[string]any:
-								if t, ok := v["target"].(string); ok {
-									caskApps[filepath.Base(t)] = true
-								}
+	if json.Unmarshal([]byte(Out("brew", "info", "--cask", "--installed", "--json=v2")), &info) != nil {
+		return
+	}
+	var pkgPatterns []string
+	for _, c := range info.Casks {
+		for _, a := range c.Artifacts {
+			for kind, raw := range a {
+				var list []any
+				_ = json.Unmarshal(raw, &list)
+				switch kind {
+				case "app", "suite":
+					for _, x := range list {
+						name := ""
+						switch v := x.(type) {
+						case string:
+							name = v
+						case map[string]any:
+							name, _ = v["target"].(string)
+						}
+						if name == "" {
+							continue
+						}
+						if kind == "suite" {
+							suites[filepath.Base(name)] = true
+						} else {
+							apps[strings.TrimPrefix(name, "/Applications/")] = true
+							apps[filepath.Base(name)] = true
+						}
+					}
+				case "uninstall":
+					for _, x := range list {
+						m, ok := x.(map[string]any)
+						if !ok {
+							continue
+						}
+						pkgPatterns = append(pkgPatterns, stringsOf(m["pkgutil"])...)
+						// installer-script casks only name the app via delete paths or bundle IDs to quit
+						for _, p := range stringsOf(m["delete"]) {
+							if rel, ok := strings.CutPrefix(p, "/Applications/"); ok {
+								apps[rel] = true
 							}
+						}
+						for _, id := range stringsOf(m["quit"]) {
+							bundleIDs[id] = true
 						}
 					}
 				}
 			}
 		}
 	}
+	if len(pkgPatterns) == 0 {
+		return
+	}
+	var res []*regexp.Regexp
+	for _, p := range pkgPatterns {
+		if re, err := regexp.Compile("^(" + p + ")$"); err == nil {
+			res = append(res, re)
+		}
+	}
+	for _, id := range strings.Split(Out("pkgutil", "--pkgs"), "\n") {
+		matched := false
+		for _, re := range res {
+			if re.MatchString(id) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		loc := ""
+		for _, line := range strings.Split(Out("pkgutil", "--pkg-info", id), "\n") {
+			if strings.HasPrefix(line, "location: ") {
+				loc = strings.TrimPrefix(line, "location: ")
+			}
+		}
+		for _, f := range strings.Split(Out("pkgutil", "--files", id), "\n") {
+			full := strings.TrimPrefix(filepath.Join("/", loc, f), "/")
+			rel, ok := strings.CutPrefix(full, "Applications/")
+			if !ok || !strings.HasSuffix(rel, ".app") || strings.Contains(rel, ".app/") {
+				continue
+			}
+			apps[rel] = true
+		}
+	}
+	return
+}
+
+// unmanagedApps lists apps in /Applications (and one folder deep) that no installed cask or the
+// App Store accounts for, minus this machine's exclude list.
+func unmanagedApps(exclude []string) []string {
+	owned, suites, bundleIDs := caskOwnedApps()
+	var apps []string
 	entries, _ := os.ReadDir("/Applications")
-	var out []string
 	for _, e := range entries {
 		n := e.Name()
-		if !strings.HasSuffix(n, ".app") || caskApps[n] || Exists(filepath.Join("/Applications", n, "Contents/_MASReceipt")) {
+		if strings.HasSuffix(n, ".app") {
+			apps = append(apps, n)
+		} else if e.IsDir() && n != "Utilities" && !suites[n] {
+			sub, _ := os.ReadDir(filepath.Join("/Applications", n))
+			for _, s := range sub {
+				if strings.HasSuffix(s.Name(), ".app") {
+					apps = append(apps, n+"/"+s.Name())
+				}
+			}
+		}
+	}
+	var out []string
+	for _, rel := range apps {
+		if strings.HasPrefix(rel, "Safari") || owned[rel] || Exists(filepath.Join("/Applications", rel, "Contents/_MASReceipt")) ||
+			bundleIDs[bundleID(filepath.Join("/Applications", rel))] || matchesAny(exclude, rel) {
 			continue
 		}
-		if strings.HasPrefix(n, "Safari") {
-			continue
-		}
-		out = append(out, n)
+		out = append(out, rel)
 	}
 	return out
 }
@@ -310,7 +472,10 @@ func autoAdopt(d *Data) {
 	var st pkgState
 	_ = readJSON(statePath, &st)
 	tried := set(st.AdoptTried)
-	for _, app := range unmanagedApps() {
+	for _, app := range unmanagedApps(d.Exclude) {
+		if strings.Contains(app, "/") {
+			continue // apps inside folders come from installers, not drag-and-drop
+		}
 		if tried[app] {
 			continue
 		}
@@ -361,3 +526,81 @@ func writeJSON(path string, v any) error {
 }
 
 func firstLine(s string) string { return strings.SplitN(s, "\n", 2)[0] }
+
+// CmdExclude manages this machine's exclude list (kept in ~/.config/chezmoi/chezmoi.toml, not the repo).
+// Excluded packages/apps aren't installed, captured, adopted, flagged or treated as uninstalled here.
+//
+//	dotfiles exclude                list
+//	dotfiles exclude NAME...        add (wildcards ok: "Microsoft *")
+//	dotfiles exclude --rm NAME...   remove
+func CmdExclude(args []string) error {
+	mc := ReadMachineConfig()
+	if len(args) == 0 {
+		if len(mc.Exclude) == 0 {
+			Say("nothing excluded on this machine")
+		}
+		for _, e := range mc.Exclude {
+			fmt.Println("  " + e)
+		}
+		return nil
+	}
+	rm := args[0] == "--rm"
+	if rm {
+		args = args[1:]
+	}
+	for _, a := range args {
+		a = strings.TrimSuffix(a, ".app")
+		if rm {
+			var keep []string
+			for _, e := range mc.Exclude {
+				if e != a {
+					keep = append(keep, e)
+				}
+			}
+			mc.Exclude = keep
+		} else if !contains(mc.Exclude, a) {
+			mc.Exclude = append(mc.Exclude, a)
+		}
+	}
+	sort.Strings(mc.Exclude)
+	if err := WriteMachineConfig(mc); err != nil {
+		return err
+	}
+	if rm {
+		Say("no longer excluded: %s", strings.Join(args, ", "))
+	} else {
+		Say("excluded on this machine: %s", strings.Join(args, ", "))
+	}
+	return nil
+}
+
+func stringsOf(v any) []string {
+	switch x := v.(type) {
+	case string:
+		return []string{x}
+	case []any:
+		var out []string
+		for _, y := range x {
+			if s, ok := y.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// bundleID reads CFBundleIdentifier from an app bundle ("" if unreadable).
+func bundleID(app string) string {
+	b, err := os.ReadFile(filepath.Join(app, "Contents/Info.plist"))
+	if err != nil {
+		return ""
+	}
+	var info struct {
+		ID string `plist:"CFBundleIdentifier"`
+	}
+	if _, err := plist.Unmarshal(b, &info); err != nil {
+		return ""
+	}
+	return info.ID
+}
