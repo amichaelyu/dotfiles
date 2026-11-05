@@ -192,23 +192,7 @@ func CmdSecrets(args []string) error {
 		return err
 	}
 	if args[0] == "pull" {
-		if item == nil {
-			return fmt.Errorf("no Bitwarden item named %q", name)
-		}
-		if err := os.MkdirAll(SecretsDir, 0o700); err != nil {
-			return err
-		}
-		_ = os.Chmod(filepath.Dir(SecretsDir), 0o700)
-		for _, a := range item.Attachments {
-			out := filepath.Join(SecretsDir, a.FileName)
-			if _, err := (Cmd{Args: []string{"bw", "get", "attachment", a.ID, "--itemid", item.ID, "--output", out}, Env: env}).Output(); err != nil {
-				return err
-			}
-			_ = os.Chmod(out, 0o600)
-		}
-		_ = os.Remove(filepath.Join(StateDir, "secrets-dirty"))
-		Say("pulled %d secret file(s); run `chezmoi apply` to render them", len(item.Attachments))
-		return nil
+		return pullSecrets(env, item, name)
 	}
 
 	// push
@@ -247,6 +231,27 @@ func CmdSecrets(args []string) error {
 	}
 	_ = os.Remove(filepath.Join(StateDir, "secrets-dirty"))
 	Say("secrets push done (%d uploaded, %d unchanged)", uploaded, len(entries)-uploaded)
+	return nil
+}
+
+// pullSecrets downloads every attachment of the Bitwarden note into the local secrets cache.
+func pullSecrets(env []string, item *bwItem, name string) error {
+	if item == nil {
+		return fmt.Errorf("no Bitwarden item named %q", name)
+	}
+	if err := os.MkdirAll(SecretsDir, 0o700); err != nil {
+		return err
+	}
+	_ = os.Chmod(filepath.Dir(SecretsDir), 0o700)
+	for _, a := range item.Attachments {
+		out := filepath.Join(SecretsDir, a.FileName)
+		if _, err := (Cmd{Args: []string{"bw", "get", "attachment", a.ID, "--itemid", item.ID, "--output", out}, Env: env}).Output(); err != nil {
+			return err
+		}
+		_ = os.Chmod(out, 0o600)
+	}
+	_ = os.Remove(filepath.Join(StateDir, "secrets-dirty"))
+	Say("pulled %d secret file(s); run `chezmoi apply` to render them", len(item.Attachments))
 	return nil
 }
 

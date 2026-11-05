@@ -10,11 +10,13 @@ curl -fsSL https://raw.githubusercontent.com/amichaelyu/dotfiles/main/install.sh
 The installer drops a single `dotfiles` binary into `~/.local/bin` and starts the setup wizard:
 
 1. **Tools**: Xcode CLT + Homebrew on macOS, mise on Linux (no sudo needed), plus the Bitwarden CLI (bw), git, gh, chezmoi, jj.
-2. **Your repo**: clone your existing dotfiles repo (default `<your GitHub username>/dotfiles-private`),
+2. **Secrets, then GitHub**: sign in to Bitwarden and pull your secrets; a saved `gh-token` signs in to
+   GitHub without the browser.
+3. **Your repo**: clone your existing dotfiles repo (default `<your GitHub username>/dotfiles-private`),
    or start a private one with that name from the built-in starter template.
-3. **What this machine gets**: *terminal* (CLI tools only), *everything*, or *custom* groups, with
+4. **What this machine gets**: *terminal* (CLI tools only), *everything*, or *custom* groups, with
    optional per-app fine-tuning.
-4. **Features**: daily auto-sync, Bitwarden secrets, a fresh SSH key for this device.
+5. **Features**: daily auto-sync, a fresh SSH key for this device.
 
 Change your mind later with `dotfiles config`.
 

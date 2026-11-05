@@ -104,6 +104,14 @@ func ensureGhAuth() error {
 	if OK("gh", "auth", "status") {
 		return nil
 	}
+	if tok := secretFile("gh-token"); tok != "" { // pulled from Bitwarden: no browser needed
+		Say("logging in to GitHub with the token from your secrets")
+		if err := (Cmd{Args: []string{"gh", "auth", "login", "--with-token"}, Stdin: tok + "\n"}).Stream(); err == nil {
+			_ = Run("gh", "auth", "setup-git")
+			return nil
+		}
+		Warn("the gh-token secret didn't work; falling back to browser sign-in")
+	}
 	Say("log in to GitHub (needed to clone a private repo and register this device's SSH key)")
 	return Cmd{Args: []string{"gh", "auth", "login", "--git-protocol", "https", "--scopes", "admin:public_key,admin:ssh_signing_key"}}.Stream()
 }
@@ -387,11 +395,45 @@ func CmdSetup() error {
 	if err := ensurePrereqs(); err != nil {
 		return err
 	}
+	pullSecretsEarly()
 	mc := ReadMachineConfig()
 	if err := chooseRepo(&mc); err != nil {
 		return err
 	}
 	return configureAndApply(&mc)
+}
+
+// pullSecretsEarly signs in to Bitwarden and pulls the secrets before GitHub sign-in, so a stored
+// gh-token logs in to GitHub without the browser. The repo isn't cloned yet, so the note's name
+// (identity.bitwarden_item) is asked for, defaulting to "dotfiles".
+func pullSecretsEarly() {
+	if Exists(SecretsDir) {
+		return
+	}
+	pull := true
+	if err := huh.NewConfirm().Title("Sign in to Bitwarden and pull your secrets now?").
+		Description("Your GitHub token is there if you saved one, so GitHub sign-in needs no browser.").
+		Value(&pull).Run(); err != nil || !pull {
+		return
+	}
+	if err := ensureBw(); err != nil {
+		Warn("couldn't install the Bitwarden CLI: %v", err)
+		return
+	}
+	name := "dotfiles"
+	_ = huh.NewInput().Title("Bitwarden note with your secrets").Value(&name).Run()
+	env, err := bwEnv()
+	if err != nil {
+		Warn("Bitwarden: %v (you can pull secrets later in setup)", err)
+		return
+	}
+	item, err := findBwItem(env, name)
+	if err == nil {
+		err = pullSecrets(env, item, name)
+	}
+	if err != nil {
+		Warn("secrets: %v (you can pull them later in setup)", err)
+	}
 }
 
 // CmdConfig re-runs the choices (profile, groups, apps, features) for this machine and applies.
