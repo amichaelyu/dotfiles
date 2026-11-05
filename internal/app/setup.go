@@ -427,6 +427,29 @@ func configureAndApply(mc *MachineConfig) error {
 		return err
 	}
 	fmt.Println()
+	// Zen has no profile until it's first opened, so its config couldn't be applied yet. Restore your
+	// profile from Bitwarden (before sign-ins, so browser flows find you logged in), or start fresh.
+	if IsMac && Exists("/Applications/Zen.app") && zenProfile() == "" {
+		if d, err := LoadData(); err == nil {
+			restored := false
+			if Has("bw") && confirm("Restore your Zen profile (tabs, logins, extensions) from Bitwarden?") {
+				if !zenBackupExists(d) {
+					Warn("no Zen backup in Bitwarden yet (`dotfiles zen-backup` on your other Mac)")
+				} else if err := CmdZenRestore(); err != nil {
+					Warn("Zen restore: %v", err)
+				} else {
+					restored = true
+				}
+			}
+			if !restored {
+				if _, err := ensureZenProfile(); err != nil {
+					Warn("Zen: %v", err)
+				} else {
+					_ = HookZen(d)
+				}
+			}
+		}
+	}
 	if confirm("Sign in to your apps now? (`dotfiles login`; you can run it later too)") {
 		if err := CmdLogin(nil); err != nil {
 			Warn("login: %v", err)
