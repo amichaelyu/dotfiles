@@ -412,7 +412,7 @@ func pullSecretsEarly() {
 	}
 	pull := true
 	if err := huh.NewConfirm().Title("Sign in to Bitwarden and pull your secrets now?").
-		Description("Your GitHub token is there if you saved one, so GitHub sign-in needs no browser.").
+		Description("Needs your Bitwarden API key (web vault → Settings → Security → Keys) and master password. A saved gh-token then signs in to GitHub without the browser.").
 		Value(&pull).Run(); err != nil || !pull {
 		return
 	}

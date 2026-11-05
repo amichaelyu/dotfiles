@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/charmbracelet/huh"
 )
 
 // Secrets live as attachments on one Bitwarden secure note and are cached in SecretsDir (0600).
@@ -118,6 +120,29 @@ func walkStrings(v any, out *[]string) {
 
 // ---------------------------------------------------------------------------- Bitwarden
 
+// bwLogin signs the CLI in with your personal API key (vault.bitwarden.com → Settings → Security →
+// Keys → View API key). The CLI can't do every two-step method (Duo, passkeys), and an API key login
+// skips two-step; unlocking still needs your master password. BW_CLIENTID / BW_CLIENTSECRET are used
+// if set, otherwise you're asked for them. Nothing is saved.
+func bwLogin() error {
+	id, secret := os.Getenv("BW_CLIENTID"), os.Getenv("BW_CLIENTSECRET")
+	if id == "" || secret == "" {
+		if err := huh.NewForm(huh.NewGroup(
+			huh.NewInput().Title("Bitwarden API key: client_id").
+				Description("vault.bitwarden.com → Settings → Security → Keys → View API key").Value(&id),
+			huh.NewInput().Title("client_secret").EchoMode(huh.EchoModePassword).Value(&secret),
+		)).Run(); err != nil {
+			return err
+		}
+	}
+	id, secret = strings.TrimSpace(id), strings.TrimSpace(secret)
+	if id == "" || secret == "" {
+		return fmt.Errorf("Bitwarden API key needed (client_id and client_secret)")
+	}
+	Say("logging in to Bitwarden with your API key")
+	return Cmd{Args: []string{"bw", "login", "--apikey"}, Env: []string{"BW_CLIENTID=" + id, "BW_CLIENTSECRET=" + secret}}.Stream()
+}
+
 func bwEnv() ([]string, error) {
 	if !Has("bw") {
 		return nil, fmt.Errorf("Bitwarden CLI (bw) isn't installed")
@@ -130,8 +155,7 @@ func bwEnv() ([]string, error) {
 	}
 	_ = json.Unmarshal([]byte(Out("bw", "status")), &st)
 	if st.Status == "unauthenticated" {
-		Say("logging in to Bitwarden")
-		if err := (Cmd{Args: []string{"bw", "login"}}).Stream(); err != nil {
+		if err := bwLogin(); err != nil {
 			return nil, err
 		}
 	}
