@@ -120,6 +120,28 @@ func walkStrings(v any, out *[]string) {
 
 // ---------------------------------------------------------------------------- Bitwarden
 
+// bwWebVault is the web vault for the server bw is set to: US cloud, EU cloud, or self-hosted.
+func bwWebVault() string {
+	server := strings.TrimRight(strings.TrimSpace(Out("bw", "config", "server")), "/")
+	switch {
+	case server == "" || strings.HasSuffix(server, "bitwarden.com"):
+		return "https://vault.bitwarden.com"
+	case strings.HasSuffix(server, "bitwarden.eu"):
+		return "https://vault.bitwarden.eu"
+	}
+	return server // self-hosted serves the web vault at its base URL
+}
+
+func openURL(u string) error {
+	if IsMac {
+		return Run("open", u)
+	}
+	if Has("xdg-open") {
+		return Run("xdg-open", u)
+	}
+	return fmt.Errorf("no browser opener")
+}
+
 // bwLogin signs the CLI in with your personal API key (vault.bitwarden.com → Settings → Security →
 // Keys → View API key). The CLI can't do every two-step method (Duo, passkeys), and an API key login
 // skips two-step; unlocking still needs your master password. BW_CLIENTID / BW_CLIENTSECRET are used
@@ -127,6 +149,9 @@ func walkStrings(v any, out *[]string) {
 func bwLogin() error {
 	id, secret := os.Getenv("BW_CLIENTID"), os.Getenv("BW_CLIENTSECRET")
 	if id == "" || secret == "" {
+		keys := bwWebVault() + "/#/settings/security/security-keys"
+		Say("opening the web vault's Keys page (View API key): %s", keys)
+		_ = openURL(keys)
 		if err := huh.NewForm(huh.NewGroup(
 			huh.NewInput().Title("Bitwarden API key: client_id").
 				Description("vault.bitwarden.com → Settings → Security → Keys → View API key").Value(&id),
