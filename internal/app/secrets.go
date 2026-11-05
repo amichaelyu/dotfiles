@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 )
@@ -120,6 +121,67 @@ func walkStrings(v any, out *[]string) {
 
 // ---------------------------------------------------------------------------- Bitwarden
 
+// The unlocked session is remembered for bwSessionTTL so each dotfiles command doesn't ask for the
+// master password again: in the login keychain on macOS, a 0600 file elsewhere. `bw lock` ends it early.
+const bwSessionTTL = 12 * time.Hour
+
+const bwSessionService = "dotfiles-bw-session"
+
+func bwSessionFile() string {
+	dir := os.Getenv("XDG_RUNTIME_DIR") // tmpfs, cleared at logout
+	if dir == "" {
+		dir = StateDir
+	}
+	return filepath.Join(dir, "bw-session")
+}
+
+func saveBwSession(session string) {
+	val := fmt.Sprintf("%d:%s", time.Now().Unix(), session)
+	if IsMac { // via `security -i` so the session never shows up in ps
+		_, _ = Cmd{Args: []string{"security", "-i"}, Stdin: fmt.Sprintf("add-generic-password -U -s %s -a %s -w %q\n",
+			bwSessionService, os.Getenv("USER"), val)}.Output()
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(bwSessionFile()), 0o700)
+	_ = os.WriteFile(bwSessionFile(), []byte(val), 0o600)
+}
+
+func forgetBwSession() {
+	if IsMac {
+		_ = Run("security", "delete-generic-password", "-s", bwSessionService, "-a", os.Getenv("USER"))
+		return
+	}
+	_ = os.Remove(bwSessionFile())
+}
+
+// loadBwSession returns a remembered session that's within its TTL and still unlocks the vault.
+func loadBwSession() string {
+	var val string
+	if IsMac {
+		val = Out("security", "find-generic-password", "-s", bwSessionService, "-a", os.Getenv("USER"), "-w")
+	} else if b, err := os.ReadFile(bwSessionFile()); err == nil {
+		val = string(b)
+	}
+	at, session, ok := strings.Cut(strings.TrimSpace(val), ":")
+	var t int64
+	if !ok || session == "" || func() bool { _, err := fmt.Sscan(at, &t); return err != nil }() {
+		return ""
+	}
+	if time.Since(time.Unix(t, 0)) > bwSessionTTL {
+		forgetBwSession()
+		return ""
+	}
+	var st struct {
+		Status string `json:"status"`
+	}
+	out, _ := Cmd{Args: []string{"bw", "status"}, Env: []string{"BW_SESSION=" + session}}.Output()
+	if json.Unmarshal([]byte(out), &st) != nil || st.Status != "unlocked" { // `bw lock` or logout
+		forgetBwSession()
+		return ""
+	}
+	return session
+}
+
 // bwWebVault is the web vault for the server bw is set to: US cloud, EU cloud, or self-hosted.
 func bwWebVault() string {
 	server := strings.TrimRight(strings.TrimSpace(Out("bw", "config", "server")), "/")
@@ -175,6 +237,10 @@ func bwEnv() ([]string, error) {
 	if s := os.Getenv("BW_SESSION"); s != "" {
 		return []string{"BW_SESSION=" + s}, nil
 	}
+	if s := loadBwSession(); s != "" { // unlocked by an earlier dotfiles command
+		os.Setenv("BW_SESSION", s)
+		return []string{"BW_SESSION=" + s}, nil
+	}
 	var st struct {
 		Status string `json:"status"`
 	}
@@ -193,6 +259,7 @@ func bwEnv() ([]string, error) {
 	}
 	session := strings.TrimSpace(string(out))
 	os.Setenv("BW_SESSION", session) // later Bitwarden steps in this run don't ask again
+	saveBwSession(session)           // nor do other dotfiles commands, for bwSessionTTL
 	env := []string{"BW_SESSION=" + session}
 	_, _ = Cmd{Args: []string{"bw", "sync"}, Env: env}.Output()
 	return env, nil
