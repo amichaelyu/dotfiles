@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -345,9 +346,48 @@ func CmdSecrets(args []string) error {
 		uploaded++
 		Say("uploaded %s", e.Name())
 	}
+	pruned := pruneSecrets(env, item, entries)
 	_ = os.Remove(filepath.Join(StateDir, "secrets-dirty"))
-	Say("secrets push done (%d uploaded, %d unchanged)", uploaded, len(entries)-uploaded)
+	Say("secrets push done (%d uploaded, %d unchanged, %d removed)", uploaded, len(entries)-uploaded, pruned)
 	return nil
+}
+
+// pruneSecrets deletes note attachments that no longer exist in the local cache, after you confirm,
+// so a secret removed here doesn't come back on the next `secrets pull`.
+func pruneSecrets(env []string, item *bwItem, local []os.DirEntry) int {
+	have := map[string]bool{}
+	for _, e := range local {
+		have[e.Name()] = true
+	}
+	var gone []string
+	ids := map[string][]string{}
+	for _, a := range item.Attachments {
+		if !have[a.FileName] {
+			if len(ids[a.FileName]) == 0 {
+				gone = append(gone, a.FileName)
+			}
+			ids[a.FileName] = append(ids[a.FileName], a.ID)
+		}
+	}
+	if len(gone) == 0 {
+		return 0
+	}
+	sort.Strings(gone)
+	if !confirm(fmt.Sprintf("Delete %d secret(s) from Bitwarden that no longer exist here: %s?", len(gone), strings.Join(gone, ", "))) {
+		return 0
+	}
+	n := 0
+	for _, name := range gone {
+		for _, id := range ids[name] {
+			if _, err := (Cmd{Args: []string{"bw", "delete", "attachment", id, "--itemid", item.ID}, Env: env}).Output(); err != nil {
+				Warn("couldn't delete %s: %v", name, firstLine(err.Error()))
+				continue
+			}
+		}
+		Say("removed %s", name)
+		n++
+	}
+	return n
 }
 
 // pullSecrets downloads every attachment of the Bitwarden note into the local secrets cache.

@@ -26,7 +26,7 @@ Every day
 Accounts, keys and secrets
   login               sign in to everything not signed in yet (--status | --add ID | --skip ID | --reset ID)
   keys                this machine's and your other devices' SSH keys (revoke NAME | push HOST | register-all)
-  secrets pull|push   Bitwarden note <-> local secrets cache
+  secrets pull|push   Bitwarden note <-> local secrets cache (push offers to remove deleted ones)
   guard [REV]         scan outgoing commits for secrets
 
 Other
