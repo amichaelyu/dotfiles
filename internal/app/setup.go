@@ -53,10 +53,12 @@ func ensurePrereqs() error {
 		if err := ensureBrew(); err != nil {
 			return err
 		}
+		// command -> Homebrew formula. bw comes first so secrets can be pulled before the big install.
 		var missing []string
-		for _, t := range []string{"git", "gh", "chezmoi", "jj", "uv", "gitleaks"} {
-			if !Has(t) {
-				missing = append(missing, t)
+		for _, t := range [][2]string{{"bw", "bitwarden-cli"}, {"git", "git"}, {"gh", "gh"}, {"chezmoi", "chezmoi"},
+			{"jj", "jj"}, {"uv", "uv"}, {"gitleaks", "gitleaks"}} {
+			if !Has(t[0]) {
+				missing = append(missing, t[1])
 			}
 		}
 		if len(missing) > 0 {
@@ -311,15 +313,13 @@ func chooseFeatures(mc *MachineConfig, d *Data) error {
 	}
 	if !Exists(SecretsDir) && hasSecretTemplates(d) {
 		pull := true
-		via := "Homebrew"
-		if !IsMac {
-			via = "mise"
+		desc := "Yes signs you in with the Bitwarden CLI (bw) and downloads your secret files."
+		if !Has("bw") {
+			desc = "Yes installs the Bitwarden CLI (bw) with mise, then signs you in to Bitwarden."
 		}
-		_ = huh.NewConfirm().Title("Pull your secrets from Bitwarden now?").
-			Description(fmt.Sprintf("Yes installs the Bitwarden CLI (bw) with %s if it's missing, then signs you in to Bitwarden.", via)).
-			Value(&pull).Run()
+		_ = huh.NewConfirm().Title("Pull your secrets from Bitwarden now?").Description(desc).Value(&pull).Run()
 		if pull {
-			// On a fresh machine bw isn't installed yet (the cli group installs it during apply).
+			// macOS installs bw with the prerequisites; Linux (or a failed install) gets it here.
 			if err := ensureBw(); err != nil {
 				Warn("couldn't install the Bitwarden CLI: %v (run `dotfiles secrets pull` after setup)", err)
 			} else if err := CmdSecrets([]string{"pull"}); err != nil {
