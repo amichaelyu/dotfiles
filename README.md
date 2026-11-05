@@ -10,7 +10,8 @@ curl -fsSL https://raw.githubusercontent.com/amichaelyu/dotfiles/main/install.sh
 The installer drops a single `dotfiles` binary into `~/.local/bin` and starts the setup wizard:
 
 1. **Tools**: Xcode CLT + Homebrew on macOS, mise on Linux (no sudo needed), plus git, gh, chezmoi, jj.
-2. **Your repo**: clone your existing dotfiles repo, or start a private one from the built-in starter template.
+2. **Your repo**: clone your existing dotfiles repo (default `<your GitHub username>/dotfiles-private`),
+   or start a private one with that name from the built-in starter template.
 3. **What this machine gets**: *terminal* (CLI tools only), *everything*, or *custom* groups, with
    optional per-app fine-tuning.
 4. **Features**: daily auto-sync, Bitwarden secrets, a fresh SSH key for this device.
@@ -47,7 +48,8 @@ dotfiles zen-push HOST                   copy your whole Zen browser profile to 
 
 ## Your repo
 
-Your dotfiles stay in **your own (private) repo**; this one only holds the tool and the starter
+Your dotfiles stay in **your own private repo**, `<your GitHub username>/dotfiles-private` by default
+(the wizard fills in the username from your `gh` login). This repo only holds the tool and the starter
 template (`template/`). Layout of a dotfiles repo:
 
 ```
