@@ -392,6 +392,16 @@ func ensureBw() error {
 // CmdSetup is the full first-run wizard: prerequisites, repo, choices, apply.
 func CmdSetup() error {
 	fmt.Println(titleStyle.Render("dotfiles setup"))
+	kind := "full"
+	if err := huh.NewSelect[string]().Title("What are you setting up?").Options(
+		huh.NewOption("Full setup: apps, settings, dotfiles", "full"),
+		huh.NewOption("Rex + Tailscale only: reach this machine from Rex, nothing else", "rex"),
+	).Value(&kind).Run(); err != nil {
+		return err
+	}
+	if kind == "rex" {
+		return CmdRexSetup()
+	}
 	if err := ensurePrereqs(); err != nil {
 		return err
 	}

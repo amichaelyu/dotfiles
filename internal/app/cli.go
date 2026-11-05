@@ -32,6 +32,7 @@ Accounts, keys and secrets
 
 Other
   zen-push HOST       copy the whole Zen profile (sessions, logins) to HOST
+  rex-setup           put this machine on Rex over Tailscale, nothing else (also a setup choice)
   zen-backup          back up the Zen profile (tabs, logins, extensions; no caches) to Bitwarden
   zen-restore         restore that backup into this machine's Zen profile
   brewfile            print the Brewfile this machine would install
@@ -106,6 +107,8 @@ func dispatch(cmd string, args []string) error {
 			return fmt.Errorf("usage: dotfiles zen-push HOST")
 		}
 		return CmdZenPush(args[0])
+	case "rex-setup":
+		return CmdRexSetup()
 	case "zen-backup":
 		return CmdZenBackup()
 	case "zen-restore":

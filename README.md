@@ -7,7 +7,14 @@ machine in sync on its own. Built on [chezmoi](https://chezmoi.io).
 curl -fsSL https://raw.githubusercontent.com/amichaelyu/dotfiles/main/install.sh | sh
 ```
 
-The installer drops a single `dotfiles` binary into `~/.local/bin` and starts the setup wizard:
+The installer drops a single `dotfiles` binary into `~/.local/bin` and starts the setup wizard. It first
+asks what you're setting up: a **full setup** (below), or **Rex + Tailscale only**, which just makes the
+machine reachable from [Rex](https://www.superlogical.com/rex): it installs Rex, puts its server on your
+tailnet as `NAME-rex` (tag `tag:rex`, using the Tailscale built into Rex) and keeps it running (systemd
+user service on Linux, the Rex app at login on macOS). Also `dotfiles rex-setup`. Windows isn't
+supported yet: Rex has no released Windows server.
+
+Full setup:
 
 1. **Tools**: Xcode CLT + Homebrew on macOS, mise on Linux (no sudo needed), plus the Bitwarden CLI (bw), git, gh, chezmoi, jj.
 2. **Bitwarden, once**: sign in with your personal API key (the web vault opens to Settings → Security →
