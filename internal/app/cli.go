@@ -31,6 +31,8 @@ Accounts, keys and secrets
 
 Other
   zen-push HOST       copy the whole Zen profile (sessions, logins) to HOST
+  zen-backup          back up the Zen profile (tabs, logins, extensions; no caches) to Bitwarden
+  zen-restore         restore that backup into this machine's Zen profile
   brewfile            print the Brewfile this machine would install
   hook NAME           run an install step (packages, prefs, zen, agents, keys); called from chezmoi scripts
   version
@@ -103,6 +105,10 @@ func dispatch(cmd string, args []string) error {
 			return fmt.Errorf("usage: dotfiles zen-push HOST")
 		}
 		return CmdZenPush(args[0])
+	case "zen-backup":
+		return CmdZenBackup()
+	case "zen-restore":
+		return CmdZenRestore()
 	case "hook":
 		return runHook(args)
 	case "brewfile":

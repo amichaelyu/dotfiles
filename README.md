@@ -44,6 +44,7 @@ dotfiles secrets pull | push
 dotfiles add PATH                        start tracking a file
 dotfiles remove PKG [--everywhere]       uninstall here (or on every machine)
 dotfiles zen-push HOST                   copy your whole Zen browser profile to another machine
+dotfiles zen-backup | zen-restore        Zen profile (tabs, logins, extensions; no caches) <-> Bitwarden
 ```
 
 ## Your repo

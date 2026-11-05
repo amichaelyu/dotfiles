@@ -142,7 +142,9 @@ func bwEnv() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	env := []string{"BW_SESSION=" + strings.TrimSpace(string(out))}
+	session := strings.TrimSpace(string(out))
+	os.Setenv("BW_SESSION", session) // later Bitwarden steps in this run don't ask again
+	env := []string{"BW_SESSION=" + session}
 	_, _ = Cmd{Args: []string{"bw", "sync"}, Env: env}.Output()
 	return env, nil
 }
@@ -211,7 +213,7 @@ func CmdSecrets(args []string) error {
 
 	// push
 	if item == nil {
-		item, err = createBwNote(env, name)
+		item, err = createBwNote(env, name, "Secret files for the dotfiles repo. Managed by `dotfiles secrets push`.")
 		if err != nil {
 			return err
 		}
@@ -248,7 +250,7 @@ func CmdSecrets(args []string) error {
 	return nil
 }
 
-func createBwNote(env []string, name string) (*bwItem, error) {
+func createBwNote(env []string, name, notes string) (*bwItem, error) {
 	var folderID any
 	var folders []struct{ ID, Name string }
 	_ = json.Unmarshal([]byte(must(Cmd{Args: []string{"bw", "list", "folders"}, Env: env}.Output())), &folders)
@@ -264,7 +266,7 @@ func createBwNote(env []string, name string) (*bwItem, error) {
 		folderID = f.ID
 	}
 	note := map[string]any{"type": 2, "name": name, "folderId": folderID, "secureNote": map[string]any{"type": 0},
-		"notes": "Secret files for the dotfiles repo. Managed by `dotfiles secrets push`."}
+		"notes": notes}
 	js, _ := json.Marshal(note)
 	enc, err := Cmd{Args: []string{"bw", "encode"}, Stdin: string(js), Env: env}.Output()
 	if err != nil {
