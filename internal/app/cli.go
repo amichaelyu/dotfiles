@@ -19,6 +19,7 @@ Every day
   sync                capture → commit → fetch/rebase → leak guard → push → apply
   capture             only pull live changes (configs, settings, packages, Zen) into the repo
   add PATH...         start tracking a file or folder
+  add --secret PATH   back up a file that holds secrets (via Bitwarden, never git)
   exclude [--rm] NAME don't manage a package or app on this machine (no args: list)
   remove PKG...       uninstall here and skip it on this machine (--everywhere: every machine)
   prefs               review settings changed since the last sync (accept N | ignore N | watch)

@@ -442,3 +442,128 @@ func createBwNote(env []string, name, notes string) (*bwItem, error) {
 }
 
 func must(s string, _ error) string { return s }
+
+// ---------------------------------------------------------------------------- add --secret
+
+// CmdAddSecret starts backing up files that hold secrets: each is copied into the secrets cache, and
+// the repo gets a template that renders it from there (so the secret never lands in git) plus a
+// .chezmoiignore entry so machines without the cache skip it. `secrets push` then uploads it.
+func CmdAddSecret(paths []string) error {
+	if len(paths) == 0 {
+		return fmt.Errorf("usage: dotfiles add --secret PATH...")
+	}
+	d, err := LoadData()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(SecretsDir, 0o700); err != nil {
+		return err
+	}
+	var added []string
+	for _, p := range paths {
+		abs, _ := filepath.Abs(ExpandHome(p))
+		rel, err := filepath.Rel(Home, abs)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("%s isn't under your home folder", p)
+		}
+		st, err := os.Stat(abs)
+		if err != nil || !st.Mode().IsRegular() {
+			return fmt.Errorf("%s isn't a file", p)
+		}
+		name := secretName(rel)
+		b, err := os.ReadFile(abs)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(SecretsDir, name), b, 0o600); err != nil {
+			return err
+		}
+		tmpl := secretSourcePath(d.Src(), rel)
+		if err := os.MkdirAll(filepath.Dir(tmpl), 0o755); err != nil {
+			return err
+		}
+		ref := fmt.Sprintf("{{- include (joinPath .chezmoi.homeDir \".config/dotfiles/secrets/%s\") -}}\n", name)
+		if err := os.WriteFile(tmpl, []byte(ref), 0o644); err != nil {
+			return err
+		}
+		ignoreUntilSecretsPulled(d.Src(), rel)
+		Say("%s -> secret %q", "~/"+rel, name)
+		added = append(added, name)
+	}
+	Say("added %d secret(s); run `dotfiles secrets push` to back them up", len(added))
+	return nil
+}
+
+// secretName: ".aws/credentials" -> "aws-credentials".
+func secretName(rel string) string {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for i, p := range parts {
+		parts[i] = strings.TrimPrefix(p, ".")
+	}
+	return strings.Join(parts, "-")
+}
+
+// secretSourcePath is where chezmoi expects the template for ~/rel: under the nearest parent folder
+// chezmoi already manages, with dot_/private_/readonly_ attributes from the real files.
+func secretSourcePath(src, rel string) string {
+	comps := strings.Split(filepath.ToSlash(rel), "/")
+	base, start := src, 0
+	for i := len(comps) - 1; i > 0; i-- {
+		if sp, err := (Cmd{Args: []string{"chezmoi", "source-path", filepath.Join(Home, filepath.Join(comps[:i]...))}}).Output(); err == nil && strings.TrimSpace(sp) != "" {
+			base, start = strings.TrimSpace(sp), i
+			break
+		}
+	}
+	attr := func(name string, mode os.FileMode, file bool) string {
+		a := ""
+		if mode.Perm()&0o077 == 0 || file { // secrets are always private
+			a += "private_"
+		}
+		if file && mode.Perm()&0o200 == 0 {
+			a += "readonly_"
+		}
+		if strings.HasPrefix(name, ".") {
+			a += "dot_" + name[1:]
+		} else {
+			a += name
+		}
+		return a
+	}
+	out := base
+	for j := start; j < len(comps); j++ {
+		st, _ := os.Stat(filepath.Join(Home, filepath.Join(comps[:j+1]...)))
+		mode := os.FileMode(0o755)
+		if st != nil {
+			mode = st.Mode()
+		}
+		last := j == len(comps)-1
+		seg := attr(comps[j], mode, last)
+		if last {
+			seg += ".tmpl"
+		}
+		out = filepath.Join(out, seg)
+	}
+	return out
+}
+
+// ignoreUntilSecretsPulled adds rel to .chezmoiignore's "no secrets cache yet" block.
+func ignoreUntilSecretsPulled(src, rel string) {
+	path := filepath.Join(src, ".chezmoiignore")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	s := string(b)
+	const open = "{{ if not (stat $secrets) }}\n"
+	i := strings.Index(s, open)
+	if i < 0 {
+		Warn("no secrets block in .chezmoiignore; add %s to it by hand", rel)
+		return
+	}
+	j := strings.Index(s[i:], "{{ end }}")
+	if j < 0 || strings.Contains(s[i:i+j], "\n"+rel+"\n") {
+		return
+	}
+	s = s[:i+j] + rel + "\n" + s[i+j:]
+	_ = os.WriteFile(path, []byte(s), 0o644)
+}

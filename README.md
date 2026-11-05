@@ -44,7 +44,7 @@ dotfiles login [--status | --add ID | --skip ID]
 dotfiles exclude [--rm] NAME            don't manage a package/app on this machine
 dotfiles keys [revoke NAME | push HOST]
 dotfiles secrets pull | push
-dotfiles add PATH                        start tracking a file
+dotfiles add [--secret] PATH             start tracking a file (--secret: via Bitwarden, never git)
 dotfiles remove PKG [--everywhere]       uninstall here (or on every machine)
 dotfiles zen-push HOST                   copy your whole Zen browser profile to another machine
 dotfiles zen-backup | zen-restore        Zen profile (tabs, logins, extensions; no caches) <-> Bitwarden

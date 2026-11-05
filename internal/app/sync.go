@@ -330,8 +330,11 @@ func indent(s string) string {
 
 // CmdAdd starts tracking a path and clears it from the candidates list.
 func CmdAdd(paths []string) error {
+	if len(paths) > 0 && paths[0] == "--secret" {
+		return CmdAddSecret(paths[1:])
+	}
 	if len(paths) == 0 {
-		return fmt.Errorf("usage: dotfiles add PATH...")
+		return fmt.Errorf("usage: dotfiles add [--secret] PATH...")
 	}
 	args := []string{"chezmoi", "add"}
 	for _, p := range paths {
