@@ -10,9 +10,9 @@ curl -fsSL https://raw.githubusercontent.com/amichaelyu/dotfiles/main/install.sh
 The installer drops a single `dotfiles` binary into `~/.local/bin` and starts the setup wizard:
 
 1. **Tools**: Xcode CLT + Homebrew on macOS, mise on Linux (no sudo needed), plus the Bitwarden CLI (bw), git, gh, chezmoi, jj.
-2. **Secrets, then GitHub**: sign in to Bitwarden with your personal API key (Settings → Security → Keys in
-   the web vault) and master password, and pull your secrets; a saved `gh-token` signs in to GitHub
-   without the browser.
+2. **Bitwarden, once**: sign in with your personal API key (the web vault opens to Settings → Security →
+   Keys) and master password; your secrets and Zen backup download together. A saved `gh-token` then
+   signs in to GitHub without the browser. The unlocked session is remembered for 12 hours (`bw lock` ends it).
 3. **Your repo**: clone your existing dotfiles repo (default `<your GitHub username>/dotfiles-private`),
    or start a private one with that name from the built-in starter template.
 4. **What this machine gets**: *terminal* (CLI tools only), *everything*, or *custom* groups, with

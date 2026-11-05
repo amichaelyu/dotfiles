@@ -173,49 +173,57 @@ func ensureZenProfile() (string, error) {
 	return prof, nil
 }
 
-// zenBackupExists reports whether a Zen backup is in Bitwarden (asks to unlock Bitwarden if needed).
-func zenBackupExists(d *Data) bool {
-	env, err := bwEnv()
-	if err != nil {
-		return false
-	}
-	item, _ := findBwItem(env, zenBackupItem(d))
-	if item == nil {
-		return false
+// zenBackupCache holds a backup downloaded ahead of time (setup fetches it with the secrets, so
+// Bitwarden is only needed once). It's removed after a successful restore.
+var zenBackupCache = filepath.Join(StateDir, zenBackupFile)
+
+// fetchZenBackup downloads the backup from the Bitwarden note itemName to dst. false if there's none.
+func fetchZenBackup(env []string, itemName, dst string) (bool, error) {
+	item, err := findBwItem(env, itemName)
+	if err != nil || item == nil {
+		return false, err
 	}
 	for _, a := range item.Attachments {
-		if a.FileName == zenBackupFile {
-			return true
+		if a.FileName != zenBackupFile {
+			continue
 		}
+		_ = os.MkdirAll(filepath.Dir(dst), 0o700)
+		if _, err := (Cmd{Args: []string{"bw", "get", "attachment", a.ID, "--itemid", item.ID, "--output", dst}, Env: env}).Output(); err != nil {
+			return false, fmt.Errorf("download failed: %w", err)
+		}
+		_ = os.Chmod(dst, 0o600)
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-// CmdZenRestore downloads the backup and unpacks it into the Zen profile. The current profile
-// folder is kept next to it (renamed) rather than deleted.
+// CmdZenRestore unpacks the backup (already downloaded, or fetched now) into the Zen profile. The
+// current profile folder is kept next to it (renamed) rather than deleted.
 func CmdZenRestore() error {
 	d, err := LoadData()
 	if err != nil {
 		return err
 	}
-	env, err := bwEnv()
-	if err != nil {
-		return err
-	}
-	item, err := findBwItem(env, zenBackupItem(d))
-	if err != nil {
-		return err
-	}
-	var attID string
-	if item != nil {
-		for _, a := range item.Attachments {
-			if a.FileName == zenBackupFile {
-				attID = a.ID
-			}
+	archive := zenBackupCache
+	if !Exists(archive) {
+		env, err := bwEnv()
+		if err != nil {
+			return err
 		}
-	}
-	if attID == "" {
-		return fmt.Errorf("no Zen backup in Bitwarden yet; run `dotfiles zen-backup` on a machine that has your profile")
+		tmp, err := os.MkdirTemp("", "dotfiles-zen")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		archive = filepath.Join(tmp, zenBackupFile)
+		Say("downloading the Zen backup")
+		found, err := fetchZenBackup(env, zenBackupItem(d), archive)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("no Zen backup in Bitwarden yet; run `dotfiles zen-backup` on a machine that has your profile")
+		}
 	}
 	if _, err := quitZenForCopy("restore its profile"); err != nil {
 		return err
@@ -223,16 +231,6 @@ func CmdZenRestore() error {
 	prof, err := ensureZenProfile()
 	if err != nil {
 		return err
-	}
-	tmp, err := os.MkdirTemp("", "dotfiles-zen")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	archive := filepath.Join(tmp, zenBackupFile)
-	Say("downloading the Zen backup")
-	if _, err := (Cmd{Args: []string{"bw", "get", "attachment", attID, "--itemid", item.ID, "--output", archive}, Env: env}).Output(); err != nil {
-		return fmt.Errorf("download failed: %w", err)
 	}
 
 	aside := prof + ".before-restore-" + time.Now().Format("2006-01-02-150405")
@@ -247,6 +245,7 @@ func CmdZenRestore() error {
 		_ = os.Rename(aside, prof)
 		return fmt.Errorf("unpacking failed, previous profile put back: %w", err)
 	}
+	_ = os.Remove(zenBackupCache)
 	Say("Zen profile restored; the previous one is at %s", strings.TrimPrefix(aside, Home+"/"))
 	return HookZen(d) // re-apply the repo's .zen config on top
 }

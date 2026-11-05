@@ -412,7 +412,7 @@ func pullSecretsEarly() {
 	}
 	pull := true
 	if err := huh.NewConfirm().Title("Sign in to Bitwarden and pull your secrets now?").
-		Description("Needs your Bitwarden API key (web vault → Settings → Security → Keys) and master password. A saved gh-token then signs in to GitHub without the browser.").
+		Description("Everything setup needs from Bitwarden, in one go: your secrets (a saved gh-token signs in to GitHub without the browser) and your Zen backup. Needs your API key (the web vault opens to it) and master password.").
 		Value(&pull).Run(); err != nil || !pull {
 		return
 	}
@@ -433,6 +433,12 @@ func pullSecretsEarly() {
 	}
 	if err != nil {
 		Warn("secrets: %v (you can pull them later in setup)", err)
+	}
+	// Everything else setup needs from Bitwarden comes now too, so you sign in once.
+	if found, err := fetchZenBackup(env, name+"-zen", zenBackupCache); err != nil {
+		Warn("Zen backup: %v", err)
+	} else if found {
+		Say("downloaded your Zen profile backup (restored after the install)")
 	}
 }
 
@@ -474,10 +480,8 @@ func configureAndApply(mc *MachineConfig) error {
 	if IsMac && Exists("/Applications/Zen.app") && zenProfile() == "" {
 		if d, err := LoadData(); err == nil {
 			restored := false
-			if Has("bw") && confirm("Restore your Zen profile (tabs, logins, extensions) from Bitwarden?") {
-				if !zenBackupExists(d) {
-					Warn("no Zen backup in Bitwarden yet (`dotfiles zen-backup` on your other Mac)")
-				} else if err := CmdZenRestore(); err != nil {
+			if Exists(zenBackupCache) && confirm("Restore your Zen profile (tabs, logins, extensions) from the backup?") {
+				if err := CmdZenRestore(); err != nil {
 					Warn("Zen restore: %v", err)
 				} else {
 					restored = true
