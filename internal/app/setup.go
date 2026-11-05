@@ -309,11 +309,20 @@ func chooseFeatures(mc *MachineConfig, d *Data) error {
 		Value(&mc.Autosync).Run(); err != nil {
 		return err
 	}
-	if Has("bw") && !Exists(SecretsDir) && hasSecretTemplates(d) {
+	if !Exists(SecretsDir) && hasSecretTemplates(d) {
 		pull := true
-		_ = huh.NewConfirm().Title("Pull your secrets from Bitwarden now?").Value(&pull).Run()
+		via := "Homebrew"
+		if !IsMac {
+			via = "mise"
+		}
+		_ = huh.NewConfirm().Title("Pull your secrets from Bitwarden now?").
+			Description(fmt.Sprintf("Yes installs the Bitwarden CLI (bw) with %s if it's missing, then signs you in to Bitwarden.", via)).
+			Value(&pull).Run()
 		if pull {
-			if err := CmdSecrets([]string{"pull"}); err != nil {
+			// On a fresh machine bw isn't installed yet (the cli group installs it during apply).
+			if err := ensureBw(); err != nil {
+				Warn("couldn't install the Bitwarden CLI: %v (run `dotfiles secrets pull` after setup)", err)
+			} else if err := CmdSecrets([]string{"pull"}); err != nil {
 				Warn("secrets: %v (run `dotfiles secrets pull` later)", err)
 			}
 		}
@@ -322,6 +331,25 @@ func chooseFeatures(mc *MachineConfig, d *Data) error {
 }
 
 func hasSecretTemplates(d *Data) bool { return len(secretTargets(d)) > 0 }
+
+// ensureBw installs the Bitwarden CLI: Homebrew on macOS, mise on Linux (same names as packages.toml).
+func ensureBw() error {
+	if Has("bw") {
+		return nil
+	}
+	Say("installing the Bitwarden CLI")
+	if IsMac {
+		return Cmd{Args: []string{"brew", "install", "bitwarden-cli"}}.Stream()
+	}
+	if err := (Cmd{Args: []string{MiseBin, "use", "-g", "--yes", "bitwarden"}}).Stream(); err != nil {
+		return err
+	}
+	os.Setenv("PATH", filepath.Join(Home, ".local/share/mise/shims")+":"+os.Getenv("PATH"))
+	if !Has("bw") {
+		return fmt.Errorf("installed, but bw isn't on PATH")
+	}
+	return nil
+}
 
 // ---------------------------------------------------------------------------- commands
 
