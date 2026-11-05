@@ -332,6 +332,34 @@ func chooseFeatures(mc *MachineConfig, d *Data) error {
 
 func hasSecretTemplates(d *Data) bool { return len(secretTargets(d)) > 0 }
 
+// ensureAppStoreSignIn waits for an App Store sign-in before the install, so App Store apps
+// (Xcode, ...) don't fail. Skippable; the packages hook then leaves them out until you sign in.
+func ensureAppStoreSignIn(apps []MasApp) {
+	if len(apps) == 0 || appStoreSignedIn() != no {
+		return // nothing to install, already signed in, or can't tell (the hook just tries)
+	}
+	names := make([]string, len(apps))
+	for i, a := range apps {
+		names[i] = a.Name
+	}
+	Say("sign in to the App Store with your Apple ID (needed for %s)", strings.Join(names, ", "))
+	_ = Run("open", "-a", "App Store")
+	for {
+		Say("waiting for the App Store sign-in...")
+		for i := 0; i < 150; i++ { // 5 minutes
+			if appStoreSignedIn() == yes {
+				Say("signed in to the App Store")
+				return
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if !confirm("Still not signed in to the App Store. Keep waiting? (No = install App Store apps later)") {
+			Warn("skipping App Store apps for now; sign in and run `chezmoi apply`")
+			return
+		}
+	}
+}
+
 // ensureBw installs the Bitwarden CLI: Homebrew on macOS, mise on Linux (same names as packages.toml).
 func ensureBw() error {
 	if Has("bw") {
@@ -388,6 +416,11 @@ func configureAndApply(mc *MachineConfig) error {
 	}
 	if err := WriteMachineConfig(*mc); err != nil {
 		return err
+	}
+	if IsMac {
+		if d, err := LoadData(); err == nil { // reload: groups and excludes were just chosen
+			ensureAppStoreSignIn(d.masApps())
+		}
 	}
 	Say("applying (this installs packages and can take a while)")
 	if err := (Cmd{Args: []string{"chezmoi", "apply", "--verbose=false"}}).Stream(); err != nil {

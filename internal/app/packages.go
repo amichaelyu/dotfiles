@@ -15,7 +15,9 @@ import (
 // ---------------------------------------------------------------------------- install (hook)
 
 // Brewfile renders the Brewfile for this machine's enabled groups minus excludes.
-func (d *Data) Brewfile() string {
+func (d *Data) Brewfile() string { return d.brewfile(true) }
+
+func (d *Data) brewfile(withMas bool) string {
 	var b strings.Builder
 	for _, t := range d.Packages.TrustedTaps.Taps {
 		fmt.Fprintf(&b, "tap %q, trusted: true\n", t)
@@ -33,13 +35,41 @@ func (d *Data) Brewfile() string {
 				fmt.Fprintf(&b, "cask %q\n", p)
 			}
 		}
-		for _, m := range g.Mas {
-			if !d.Excluded(m.Name) {
-				fmt.Fprintf(&b, "mas %q, id: %d\n", m.Name, m.ID)
+		if withMas {
+			for _, m := range g.Mas {
+				if !d.Excluded(m.Name) {
+					fmt.Fprintf(&b, "mas %q, id: %d\n", m.Name, m.ID)
+				}
 			}
 		}
 	}
 	return b.String()
+}
+
+// masApps: App Store apps in this machine's enabled groups, minus excludes.
+func (d *Data) masApps() []MasApp {
+	var out []MasApp
+	for _, name := range d.EnabledGroups() {
+		for _, m := range d.Packages.Groups[name].Mas {
+			if !d.Excluded(m.Name) {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// appStoreSignedIn reads the macOS Accounts database: an active, authenticated App Store
+// (iTunesStore) account means `mas` can install. unknown if the database can't be read.
+func appStoreSignedIn() signedIn {
+	db := filepath.Join(Home, "Library/Accounts/Accounts4.sqlite")
+	out, err := Cmd{Args: []string{"sqlite3", "-readonly", db,
+		"select count(*) from ZACCOUNT a join ZACCOUNTTYPE t on a.ZACCOUNTTYPE = t.Z_PK " +
+			"where t.ZIDENTIFIER = 'com.apple.account.iTunesStore' and a.ZACTIVE = 1 and a.ZAUTHENTICATED = 1"}}.Output()
+	if err != nil {
+		return unknown
+	}
+	return boolCheck(strings.TrimSpace(out) != "0")
 }
 
 // HookPackages installs the packages for this machine (brew/mas on macOS, mise on Linux).
@@ -70,10 +100,15 @@ func installMac(d *Data) error {
 	if err := ensureBrew(); err != nil {
 		return err
 	}
+	withMas := true
+	if apps := d.masApps(); len(apps) > 0 && appStoreSignedIn() == no {
+		withMas = false
+		Warn("not signed in to the App Store; skipping %d App Store apps (sign in, then run `chezmoi apply`)", len(apps))
+	}
 	Say("brew bundle (%s)", strings.Join(d.EnabledGroups(), ", "))
-	err := Cmd{Args: []string{"brew", "bundle", "--file=-", "--no-upgrade"}, Stdin: d.Brewfile()}.Stream()
+	err := Cmd{Args: []string{"brew", "bundle", "--file=-", "--no-upgrade"}, Stdin: d.brewfile(withMas)}.Stream()
 	if err != nil {
-		Warn("some packages failed (App Store apps need you signed in to the App Store); re-run `chezmoi apply` later")
+		Warn("some packages failed; re-run `chezmoi apply` later")
 	}
 	for _, c := range d.Packages.Removed.Cask {
 		if OK("brew", "list", "--cask", c) {
